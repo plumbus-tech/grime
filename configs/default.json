@@ -36,7 +36,29 @@
     "insert": "insert",
     "home": "home",
     "pageup": "pageup",
-    "tab": "tab",
+    "tab": {
+      "press": {
+        "then": {
+          "f": {
+            "press": {
+              "do": "exec",
+              "cmd": "firefox"
+            }
+          },
+          "c": {
+            "press": {
+              "do": "tap",
+              "key": "capslock"
+            }
+          }
+        }
+      },
+      "release": {
+        "alone": true,
+        "do": "tap",
+        "key": "tab"
+      }
+    },
     "q": "q",
     "w": "w",
     "e": "e",
@@ -82,7 +104,6 @@
     "leftmeta": "leftmeta",
     "leftalt": "leftalt",
     "space": "space",
-    "rightalt": "rightalt",
     "rightmeta": "rightmeta",
     "compose": "compose",
     "left": "left",
@@ -170,6 +191,96 @@
             "press": {
               "do": "quit"
             }
+          },
+          "o": {
+            "press": {
+              "exit": "toggle",
+              "fallthrough": true,
+              "do": "exec",
+              "argv": [
+                "notify-send",
+                "grime",
+                "override mode toggled (capslock+o)"
+              ],
+              "then": {
+                "leftctrl": {
+                  "press": {
+                    "do": "press",
+                    "key": "leftctrl",
+                    "fallthrough": true,
+                    "then": {
+                      "f": {
+                        "press": {
+                          "do": "exec",
+                          "cmd": "firefox"
+                        }
+                      },
+                      "t": {
+                        "press": {
+                          "do": "exec",
+                          "argv": [
+                            "notify-send",
+                            "grime",
+                            "ctrl+t taken over by grime"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "release": {
+                    "do": "release",
+                    "key": "leftctrl"
+                  }
+                }
+              }
+            }
+          },
+          "d": {
+            "press": {
+              "exit": "toggle",
+              "fallthrough": true,
+              "do": "exec",
+              "argv": [
+                "notify-send",
+                "grime",
+                "dvorak toggled (capslock+d)"
+              ],
+              "then": {
+                "minus": "leftbrace",
+                "equal": "rightbrace",
+                "q": "apostrophe",
+                "w": "comma",
+                "e": "dot",
+                "r": "p",
+                "t": "y",
+                "y": "f",
+                "u": "g",
+                "i": "c",
+                "o": "r",
+                "p": "l",
+                "leftbrace": "slash",
+                "rightbrace": "equal",
+                "s": "o",
+                "d": "e",
+                "f": "u",
+                "g": "i",
+                "h": "d",
+                "j": "h",
+                "k": "t",
+                "l": "n",
+                "semicolon": "s",
+                "apostrophe": "minus",
+                "z": "semicolon",
+                "x": "q",
+                "c": "j",
+                "v": "k",
+                "b": "x",
+                "n": "b",
+                "comma": "w",
+                "dot": "v",
+                "slash": "z"
+              }
+            }
           }
         }
       },
@@ -179,10 +290,10 @@
         "key": "esc"
       }
     },
-    "rightctrl": {
+    "rightctrl": "rightctrl",
+    "rightalt": {
       "press": {
         "exit": "action",
-        "timeout_ms": 2000,
         "then": {
           "x": {
             "press": {
@@ -200,7 +311,7 @@
                     "argv": [
                       "notify-send",
                       "grime",
-                      "rightctrl x t"
+                      "rightalt x t"
                     ]
                   }
                 }
@@ -210,7 +321,7 @@
           "l": {
             "press": {
               "do": "log",
-              "msg": "rightctrl l pressed"
+              "msg": "rightalt l pressed"
             }
           }
         }

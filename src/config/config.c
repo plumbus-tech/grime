@@ -66,11 +66,13 @@ static int parse_binding(json_object *obj, grime_binding *b, grime_edge edge, co
 			b->exit = GRIME_EXIT_RELEASE;
 		else if (!strcmp(s, "action"))
 			b->exit = GRIME_EXIT_ACTION;
+		else if (!strcmp(s, "toggle") && edge == GRIME_PRESS)
+			b->exit = GRIME_EXIT_TOGGLE;
+		else if (!strcmp(s, "toggle"))
+			return fail(err, errlen, path, "\"exit\": \"toggle\" only works on a press");
 		else
-			return fail(err, errlen, path, "\"exit\" must be \"release\" or \"action\"");
+			return fail(err, errlen, path, "\"exit\" must be \"release\", \"action\" or \"toggle\"");
 	}
-	if (json_object_object_get_ex(obj, "timeout_ms", &v))
-		b->timeout_ms = json_object_get_int(v);
 	if (json_object_object_get_ex(obj, "fallthrough", &v))
 		b->fallthrough = json_object_get_boolean(v);
 	if (json_object_object_get_ex(obj, "alone", &v)) {
@@ -85,6 +87,8 @@ static int parse_binding(json_object *obj, grime_binding *b, grime_edge edge, co
 		if (parse_keymap(v, b->then, sub, err, errlen) < 0)
 			return -1;
 	}
+	if (b->exit == GRIME_EXIT_TOGGLE && !b->then)
+		return fail(err, errlen, path, "\"exit\": \"toggle\" needs a \"then\" keymap to toggle");
 	if (!b->action && !b->then)
 		return fail(err, errlen, path, "needs \"do\" and/or \"then\"");
 	return 0;

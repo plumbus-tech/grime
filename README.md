@@ -7,7 +7,7 @@ command, hit an HTTP API to toggle your lights, reload, quit.
 
 - Any key can be a modifier (hold `capslock` → a layer; hold `a` → another).
 - Any key can be anything (`rightshift` types `a`).
-- Emacs-style sequences (`rightctrl x f`).
+- Emacs-style sequences (`rightalt x f`).
 - Tap vs hold (`capslock` tapped alone = Esc).
 - A key that isn't in the keymap **does nothing**.
 - Fully async: one epoll loop; commands and HTTP calls never stall typing.
@@ -29,7 +29,9 @@ auto-exits after 60 s by default (`--timeout 0` to disable).
 In `configs/default.json`: normal QWERTY typing, plus
 - `capslock` tap → Esc; hold `capslock` + `h j k l` → arrows, `+u` → Ctrl-Z,
   `+t` → notification, `+y` → types text, `+r` → reload config, `+q` → quit
-- `rightctrl x t` → notification (Emacs-style prefix, 2 s timeout)
+- `capslock o` → turn override mode on/off: `ctrl+f` opens Firefox and `ctrl+t` sends a
+  notification instead of reaching the app; every other ctrl chord passes through
+- `rightalt x t` → notification (Emacs-style prefix; any undefined key cancels it)
 
 `scripts/setup-permissions.sh` (once, then re-login) lets you run without sudo.
 

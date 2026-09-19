@@ -29,7 +29,7 @@ Lane A
 
 Lane B
 - Named keymaps / layers you can reference instead of inlining (`"then": "@nav"`).
-- Toggle layers (stay until pressed again), one-shot modifiers.
-- Hold timeout for tap-vs-hold (`"alone"` + time limit) to fix home-row-mod rolls.
+- One-shot modifiers. (Toggle layers exist: `"exit": "toggle"`.)
+- Event-only fix for home-row-mod rolls (e.g. resolve by release order), keeping the keymap free of timers.
 - `"include"` of other JSON files, layouts (dvorak etc.) as overlays.
 - More engine tests (deep nesting, reload while keys held).

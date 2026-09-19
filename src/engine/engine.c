@@ -5,9 +5,14 @@
  *     so press/release stay paired even if the context changed meanwhile.
  *  3. A binding with "then" pushes a frame. EXIT_RELEASE frames pop when the
  *     key that pushed them is released; EXIT_ACTION frames pop (as a chain)
- *     once an action fires inside them, on an unmatched press, or on timeout.
+ *     once an action fires inside them or on an unmatched press.
+ *     EXIT_TOGGLE frames stay until the binding that pushed them is pressed
+ *     again, from wherever it is reachable; every other pop leaves them in
+ *     place (frames above slide down), so a toggle can be turned on at any
+ *     depth and outlives the layers it was turned on from.
  *  4. "alone" release bindings only fire if no other key was pressed while
- *     this one was held. */
+ *     this one was held.
+ * The walk is driven purely by press/release events: no timers, no clocks. */
 #include "grime/engine.h"
 
 #include <stdlib.h>
@@ -112,43 +117,51 @@ struct grime_engine {
 	int depth; /* frames in use; stack[0] is root */
 	struct keystate keys[GRIME_KEY_COUNT];
 	uint64_t press_seq;
-	grime_timer *timeout;
 };
 
-static struct frame *top(grime_engine *e)
+static bool is_toggle(const struct frame *f)
 {
-	return &e->stack[e->depth - 1];
+	return f->via && f->via->exit == GRIME_EXIT_TOGGLE;
 }
 
-static void update_timeout(grime_engine *e)
-{
-	if (!e->timeout)
-		return;
-	const grime_binding *via = top(e)->via;
-	if (via && via->timeout_ms)
-		grime_timer_arm(e->timeout, via->timeout_ms);
-	else
-		grime_timer_disarm(e->timeout);
-}
-
+/* Drop frames from index `depth` up, except toggles, which slide down. */
 static void pop_to(grime_engine *e, int depth)
 {
 	if (depth < 1)
 		depth = 1;
-	if (depth < e->depth) {
-		LOG_DEBUG("leave %d level(s)", e->depth - depth);
-		e->depth = depth;
-		update_timeout(e);
+	int w = depth;
+	for (int r = depth; r < e->depth; r++)
+		if (is_toggle(&e->stack[r]))
+			e->stack[w++] = e->stack[r];
+	if (w < e->depth) {
+		LOG_DEBUG("leave %d level(s)", e->depth - w);
+		e->depth = w;
 	}
 }
 
-/* Pop the chain of emacs-style prefix frames sitting on top of the stack. */
+/* Pop the chain of emacs-style prefix frames sitting on top of the stack
+ * (toggles inside the chain stay). */
 static void pop_prefixes(grime_engine *e)
 {
 	int d = e->depth;
-	while (d > 1 && e->stack[d - 1].via->exit == GRIME_EXIT_ACTION)
+	while (d > 1 && (e->stack[d - 1].via->exit == GRIME_EXIT_ACTION || is_toggle(&e->stack[d - 1])))
 		d--;
 	pop_to(e, d);
+}
+
+static int find_frame(const grime_engine *e, const grime_binding *b)
+{
+	for (int d = 1; d < e->depth; d++)
+		if (e->stack[d].via == b)
+			return d;
+	return -1;
+}
+
+static void remove_frame(grime_engine *e, int d)
+{
+	for (; d < e->depth - 1; d++)
+		e->stack[d] = e->stack[d + 1];
+	e->depth--;
 }
 
 static void push(grime_engine *e, const grime_binding *b, int key)
@@ -158,15 +171,6 @@ static void push(grime_engine *e, const grime_binding *b, int key)
 		return;
 	}
 	e->stack[e->depth++] = (struct frame){b->then, b, key};
-	update_timeout(e);
-}
-
-static void on_timeout(grime_loop *loop, void *ud)
-{
-	(void)loop;
-	grime_engine *e = ud;
-	LOG_DEBUG("sequence timed out");
-	pop_prefixes(e);
 }
 
 grime_engine *grime_engine_new(grime_runtime *rt, grime_node *root)
@@ -175,8 +179,6 @@ grime_engine *grime_engine_new(grime_runtime *rt, grime_node *root)
 	if (!e)
 		return NULL;
 	e->rt = rt;
-	if (rt->loop)
-		e->timeout = grime_timer_new(rt->loop, on_timeout, e);
 	grime_engine_set_keymap(e, root);
 	return e;
 }
@@ -190,14 +192,12 @@ void grime_engine_set_keymap(grime_engine *e, grime_node *root)
 	/* keys held across a reload are forgotten: their releases are ignored */
 	for (int i = 0; i < GRIME_KEY_COUNT; i++)
 		e->keys[i] = (struct keystate){0};
-	update_timeout(e);
 }
 
 void grime_engine_free(grime_engine *e)
 {
 	if (!e)
 		return;
-	grime_timer_free(e->timeout);
 	grime_node_free(e->root);
 	free(e);
 }
@@ -231,13 +231,22 @@ static void on_press(grime_engine *e, uint16_t code)
 		pop_prefixes(e); /* like emacs: an undefined key cancels the prefix */
 		return;
 	}
+	if (b->exit == GRIME_EXIT_TOGGLE) {
+		fire(e, b, code, "press"); /* both ways, so "do" can announce it */
+		int on = find_frame(e, b);
+		LOG_INFO("%s: toggle %s", grime_key_name(code), on > 0 ? "off" : "on");
+		if (on > 0)
+			remove_frame(e, on);
+		else
+			push(e, b, code);
+		pop_prefixes(e); /* a toggle ends any prefix that led to it */
+		return;
+	}
 	fire(e, b, code, "press");
 	if (b->then)
 		push(e, b, code);
 	else if (b->action)
 		pop_prefixes(e);
-	else
-		update_timeout(e);
 }
 
 static void on_release(grime_engine *e, uint16_t code)

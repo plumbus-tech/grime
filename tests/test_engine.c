@@ -152,19 +152,69 @@ TEST(emacs_prefix_cancelled_by_unmapped_key)
 	grime_engine_free(e);
 }
 
-static void stop_loop(grime_loop *l, void *ud) { grime_loop_stop(l); }
+/* f13 toggles an "override" layer: ctrl+f is taken over by grime, every other
+ * ctrl chord (ctrl+s) still reaches the app as ctrl+s. */
+static const char *override =
+	"{\"keymap\": {"
+	"  \"s\": \"s\", \"f\": \"f\", \"leftctrl\": \"leftctrl\","
+	"  \"f13\": {\"press\": {\"exit\": \"toggle\", \"fallthrough\": true, \"then\": {"
+	"    \"leftctrl\": {"
+	"      \"press\": {\"do\": \"press\", \"key\": \"leftctrl\", \"fallthrough\": true, \"then\": {"
+	"        \"f\": {\"press\": {\"do\": \"tap\", \"key\": \"f1\"}}}},"
+	"      \"release\": {\"do\": \"release\", \"key\": \"leftctrl\"}}}}},"
+	"  \"capslock\": {\"press\": {\"then\": {"
+	"    \"o\": {\"press\": {\"exit\": \"toggle\", \"fallthrough\": true, \"then\": {"
+	"      \"s\": \"f\"}}}}}},"
+	"  \"rightalt\": {\"press\": {\"exit\": \"action\", \"then\": {"
+	"    \"o\": {\"press\": {\"exit\": \"toggle\", \"fallthrough\": true, \"then\": {"
+	"      \"f\": \"s\"}}}}}}"
+	"}}";
 
-TEST(emacs_prefix_times_out)
+TEST(toggle_overrides_chords_until_toggled_again)
 {
-	grime_engine *e = load("{\"keymap\": {\"x\": \"x\", \"rightctrl\": {\"press\": {\"exit\": \"action\", "
-			       "\"timeout_ms\": 30, \"then\": {\"x\": {\"press\": {\"do\": \"tap\", \"key\": \"f1\"}}}}}}}");
-	feed(e, "+rightctrl -rightctrl");
-	grime_timer *t = grime_timer_new(loop, stop_loop, NULL);
-	grime_timer_arm(t, 80);
-	grime_loop_run(loop);
-	grime_timer_free(t);
-	feed(e, "+x -x"); /* prefix expired: x is plain x again */
-	CHECK(!strcmp(rec, "+x -x"));
+	grime_engine *e = load(override);
+	feed(e, "+leftctrl +f -f -leftctrl");         /* off: plain ctrl+f */
+	feed(e, "+f13 -f13");                         /* on */
+	feed(e, "+leftctrl +f -f +s -s -leftctrl");   /* ctrl+f overridden, ctrl+s passes */
+	feed(e, "+f -f");                             /* plain f falls through */
+	feed(e, "+f13 -f13 +leftctrl +f -f -leftctrl"); /* off again */
+	CHECK(!strcmp(rec, "+leftctrl +f -f -leftctrl "
+			   "+leftctrl +f1 -f1 +s -s -leftctrl "
+			   "+f -f "
+			   "+leftctrl +f -f -leftctrl"));
+	grime_engine_free(e);
+}
+
+TEST(toggle_outlives_the_layer_it_was_turned_on_from)
+{
+	grime_engine *e = load(override);
+	feed(e, "+capslock +o -o -capslock"); /* on, from inside the capslock layer */
+	feed(e, "+s -s");                     /* still on after capslock is released */
+	feed(e, "+capslock +o -o -capslock"); /* same path again: off */
+	feed(e, "+s -s");
+	CHECK(!strcmp(rec, "+f -f +s -s"));
+	grime_engine_free(e);
+}
+
+TEST(toggle_from_a_prefix_ends_the_prefix)
+{
+	grime_engine *e = load(override);
+	feed(e, "+rightalt -rightalt +o -o"); /* rightalt o: on */
+	feed(e, "+f -f +s -s");
+	feed(e, "+rightalt -rightalt +o -o"); /* rightalt o: off */
+	feed(e, "+f -f");
+	CHECK(!strcmp(rec, "+s -s +s -s +f -f"));
+	grime_engine_free(e);
+}
+
+TEST(toggles_stack)
+{
+	grime_engine *e = load(override);
+	feed(e, "+capslock +o -o -capslock +rightalt -rightalt +o -o"); /* both on; top wins */
+	feed(e, "+s -s +f -f");
+	feed(e, "+capslock +o -o -capslock"); /* turn the lower one off, upper stays */
+	feed(e, "+s -s +f -f");
+	CHECK(!strcmp(rec, "+f -f +s -s +s -s +s -s"));
 	grime_engine_free(e);
 }
 
@@ -194,6 +244,10 @@ TEST(config_errors_are_helpful)
 	CHECK(config_fails("{\"keymap\": {\"a\": {\"hold\": {}}}}", "keymap.a.hold"));
 	CHECK(config_fails("{\"keymap\": {\"a\": {\"press\": {\"alone\": true, \"do\": \"quit\"}}}}", "alone"));
 	CHECK(config_fails("{\"keymap\": ", "invalid JSON"));
+	CHECK(config_fails("{\"keymap\": {\"a\": {\"press\": {\"exit\": \"toggle\", \"do\": \"quit\"}}}}",
+			   "needs a \"then\""));
+	CHECK(config_fails("{\"keymap\": {\"a\": {\"release\": {\"exit\": \"toggle\", \"then\": {}}}}}",
+			   "only works on a press"));
 }
 
 int main(void)
@@ -208,7 +262,10 @@ int main(void)
 	RUN(release_stays_paired_across_context_change);
 	RUN(emacs_prefix_sequence);
 	RUN(emacs_prefix_cancelled_by_unmapped_key);
-	RUN(emacs_prefix_times_out);
+	RUN(toggle_overrides_chords_until_toggled_again);
+	RUN(toggle_outlives_the_layer_it_was_turned_on_from);
+	RUN(toggle_from_a_prefix_ends_the_prefix);
+	RUN(toggles_stack);
 	RUN(fallthrough_to_parent);
 	RUN(quit_action);
 	RUN(config_errors_are_helpful);

@@ -17,15 +17,15 @@ typedef struct grime_node grime_node;
 typedef enum {
 	GRIME_EXIT_RELEASE, /* leave the child when the key that entered it is released */
 	GRIME_EXIT_ACTION,  /* leave after the first action fires inside it (emacs prefix) */
+	GRIME_EXIT_TOGGLE,  /* stay until the same binding is pressed again; survives other pops */
 } grime_exit_mode;
 
 typedef struct grime_binding {
 	grime_action *action; /* may be NULL */
 	grime_node *then;     /* may be NULL */
 	grime_exit_mode exit;
-	uint32_t timeout_ms; /* 0 = none; leave the child if idle this long */
-	bool fallthrough;    /* unmatched presses in the child try the parent */
-	bool alone;          /* release only: fire only if no other key was pressed meanwhile */
+	bool fallthrough; /* unmatched presses in the child try the parent */
+	bool alone;       /* release only: fire only if no other key was pressed meanwhile */
 } grime_binding;
 
 grime_node *grime_node_new(void);
