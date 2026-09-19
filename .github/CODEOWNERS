@@ -1,0 +1,16 @@
+# Lanes (see docs/CONTRIBUTING.md). Replace @FRIEND with your co-author's GitHub handle.
+# The shared contract needs both of you.
+/include/grime/        @rkulskis @FRIEND
+/docs/CONFIG.md        @rkulskis @FRIEND
+
+# Lane A — platform / async
+/src/core/             @FRIEND
+/src/backend/          @FRIEND
+/src/actions/act_exec.c @FRIEND
+/src/actions/act_http.c @FRIEND
+/scripts/              @FRIEND
+
+# Lane B — the brain
+/src/engine/           @rkulskis
+/src/config/           @rkulskis
+/tests/                @rkulskis

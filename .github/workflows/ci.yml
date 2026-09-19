@@ -1,0 +1,14 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libjson-c-dev libcurl4-openssl-dev
+      - run: make CFLAGS="-O2 -g -Werror"
+      - run: make test
+      - run: make check-configs
