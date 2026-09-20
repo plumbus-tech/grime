@@ -21,6 +21,7 @@
 
 struct ctx {
 	json_object *layers;               /* every layer, this file's and its includes' */
+	json_object *keymap;               /* the merged keymap, before lowering */
 	const char *open[MAX_LAYER_DEPTH]; /* layer names being expanded, for cycles */
 	int nopen;
 	char included[MAX_INCLUDES][MAX_PATH]; /* files already pulled in, for cycles */
@@ -249,16 +250,102 @@ static json_object *lower_action(struct ctx *c, json_object *v, const char *path
 }
 
 /* A layer slot: an inline keymap, or the name of one from "layers". */
+/* The layer a key opens, whichever slot it used to open it. */
+static json_object *layer_slot_of(json_object *entry)
+{
+	static const char *const slots[] = {"hold", "prefix", "toggle"};
+	if (!json_object_is_type(entry, json_type_object))
+		return NULL;
+	for (size_t i = 0; i < sizeof slots / sizeof *slots; i++) {
+		json_object *v = obj_get(entry, slots[i]);
+		if (v)
+			return v;
+	}
+	return NULL;
+}
+
+/* Entries are addressed by key, so "caps" and "capslock" find the same one.
+ * Path and chord entries ("rightalt x f") aren't addressable -- write them
+ * nested if you want to borrow from them. */
+static json_object *find_entry(json_object *km, const char *key)
+{
+	const char *want = canon(key);
+	if (!want || !json_object_is_type(km, json_type_object))
+		return NULL;
+	json_object_object_foreach(km, name, val)
+	{
+		if (strpbrk(name, " +"))
+			continue;
+		const char *k = canon(name);
+		if (k && !strcmp(k, want))
+			return val;
+	}
+	return NULL;
+}
+
+static json_object *borrow_layer(struct ctx *c, const char *ref, const char *path);
+
+/* An inline keymap, a name from "layers", or a key whose layer we borrow. */
+static json_object *raw_layer(struct ctx *c, json_object *v, const char *path)
+{
+	if (json_object_is_type(v, json_type_object))
+		return v;
+	const char *s = str_of(v);
+	if (!s) {
+		fail(c, path, "expected a keymap, a layer name, or a key to borrow from");
+		return NULL;
+	}
+	json_object *l = c->layers ? obj_get(c->layers, s) : NULL;
+	return l ? l : borrow_layer(c, s, path);
+}
+
+/* "capslock" is the keymap capslock opens; "tab.c" the one tab-then-c opens. */
+static json_object *borrow_layer(struct ctx *c, const char *ref, const char *path)
+{
+	char buf[256];
+	if (strlen(ref) >= sizeof buf) {
+		fail(c, path, "reference too long");
+		return NULL;
+	}
+	strcpy(buf, ref);
+	for (int i = 0; i < c->nopen; i++)
+		if (!strcmp(c->open[i], ref)) {
+			fail(c, path, "layer \"%s\" contains itself", ref);
+			return NULL;
+		}
+	if (c->nopen == MAX_LAYER_DEPTH) {
+		fail(c, path, "layer references nested deeper than %d", MAX_LAYER_DEPTH);
+		return NULL;
+	}
+	json_object *km = c->keymap, *layer = NULL;
+	for (char *step = strtok(buf, "."); step; step = strtok(NULL, ".")) {
+		json_object *entry = find_entry(km, step);
+		if (!entry) {
+			fail(c, path,
+			     "\"%s\": no layer by that name, and no key \"%s\" to borrow from",
+			     ref, step);
+			return NULL;
+		}
+		layer = layer_slot_of(entry);
+		if (!layer) {
+			fail(c, path, "\"%s\": \"%s\" has no layer to borrow", ref, step);
+			return NULL;
+		}
+		c->open[c->nopen++] = ref; /* guard the mutual recursion below */
+		km = raw_layer(c, layer, path);
+		c->nopen--;
+		if (!km)
+			return NULL;
+	}
+	return layer;
+}
+
+/* A layer slot: an inline keymap, a name from "layers", or a key to borrow from. */
 static json_object *resolve_layer(struct ctx *c, json_object *v, const char *path)
 {
 	const char *s = str_of(v);
 	if (!s)
 		return lower_keymap(c, v, path);
-	json_object *l = c->layers ? obj_get(c->layers, s) : NULL;
-	if (!l) {
-		fail(c, path, "no layer named \"%s\" in \"layers\"", s);
-		return NULL;
-	}
 	for (int i = 0; i < c->nopen; i++)
 		if (!strcmp(c->open[i], s)) {
 			fail(c, path, "layer \"%s\" contains itself", s);
@@ -268,8 +355,12 @@ static json_object *resolve_layer(struct ctx *c, json_object *v, const char *pat
 		fail(c, path, "layers nested deeper than %d", MAX_LAYER_DEPTH);
 		return NULL;
 	}
+	json_object *l = c->layers ? obj_get(c->layers, s) : NULL;
+	bool named = l != NULL;
+	if (!l && !(l = borrow_layer(c, s, path)))
+		return NULL;
 	char sub[512];
-	snprintf(sub, sizeof sub, "layers.%s", s);
+	snprintf(sub, sizeof sub, named ? "layers.%s" : "keymap.%s", s);
 	c->open[c->nopen++] = s;
 	json_object *r = lower_keymap(c, l, sub);
 	c->nopen--;
@@ -679,6 +770,7 @@ json_object *grime_config_lower(json_object *root, const char *path, char *err, 
 		goto done;
 	}
 	c.layers = layers;
+	c.keymap = keymap;
 	if (!(out_km = lower_keymap(&c, keymap, "keymap")))
 		goto done;
 

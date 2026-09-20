@@ -26,7 +26,7 @@
       "tap": "tab",
       "hold": {
         "f": { "do": "exec", "cmd": "firefox" },
-        "c": "capslock"
+        "c": { "tap": "capslock", "hold": "capslock" }
       }
     },
 

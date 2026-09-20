@@ -80,6 +80,9 @@ The value is either a **key to behave like**, or an object of **slots**:
 | `hold` | a keymap | that keymap applies while this key is held |
 | `prefix` | a keymap | Emacs style: applies until one action fires, or an undefined key cancels it |
 | `toggle` | a keymap | sticky: applies until this same binding is pressed again |
+
+A keymap is written inline, or named: either an entry in `layers`, or **the key
+that opens it** (see "Borrowing a layer").
 | `tap` | an action | fires on release, only if nothing else was pressed meanwhile |
 | `release` | an action | fires on release, always |
 | `press` | an action | fires on press |
@@ -92,6 +95,38 @@ home-row mod, and `{"toggle": …, "do": …}` announces itself as it flips.
 
 An **action** is `{"do": "...", ...}`, or a string: `"esc"` taps that key,
 `"ctrl+z"` taps that chord.
+
+## Borrowing a layer
+
+Wherever a keymap is expected you can write the name of a key instead, and you
+get the layer that key opens. So this:
+
+```json
+"capslock": { "tap": "esc", "hold": { "h": "left", "j": "down" } },
+"tab": { "tap": "tab", "hold": {
+  "c": { "tap": "capslock", "hold": "capslock" }
+}}
+```
+
+reads the way you'd say it: **tapping `tab c` is a capslock tap, holding it is a
+capslock hold.** Let go and you get the capslock key; keep holding and
+`h`/`j` are arrows, because `c` is standing in the same layer capslock does.
+
+The two halves are independent on purpose. `tab c` tapped sends **capslock**
+even though capslock itself taps to Esc — you are borrowing the layer, not
+impersonating the key.
+
+- `"hold": "capslock"` takes whichever layer capslock opens, whatever slot it
+  used. `"toggle": "capslock"` takes that same layer and makes it sticky
+  instead, so one layer can have different lifetimes in different places.
+- `"hold": "tab.c"` reaches further down: the layer `tab` then `c` opens. Keys
+  written as paths or chords (`"rightalt x f"`) aren't addressable this way —
+  write them nested if you want to borrow from them.
+- Order doesn't matter; a key can borrow from one defined later in the file.
+- A layer that ends up containing itself is a config error, not a hang.
+
+Naming a layer in `layers` is still the better move when two keys share a
+*concept*. Borrowing is for when one key genuinely stands in for another.
 
 ## How the walk works
 

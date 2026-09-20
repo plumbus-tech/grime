@@ -174,6 +174,35 @@ TEST(named_layers_can_be_reused)
 		    "+down -down +j -j"));
 }
 
+TEST(a_layer_can_be_borrowed_from_the_key_that_opens_it)
+{
+	/* tapping c is a capslock tap; holding c is a capslock hold */
+	static const char *cfg =
+		"{" BASE "\"keymap\": {"
+		"  \"capslock\": {\"tap\": \"esc\", \"hold\": {\"h\": \"left\", \"j\": \"down\"}},"
+		"  \"tab\": {\"tap\": \"tab\", \"hold\": {"
+		"    \"c\": {\"tap\": \"capslock\", \"hold\": \"capslock\"}}}}}";
+	CHECK(emits(cfg, "+tab +c -c -tab", "+capslock -capslock"));
+	CHECK(emits(cfg, "+tab +c +h -h +j -j -c -tab", "+left -left +down -down"));
+	/* the borrowed layer is the real one, so capslock itself still works */
+	CHECK(emits(cfg, "+capslock +h -h -capslock", "+left -left"));
+	/* and the key it was borrowed from can be written after it in the file */
+	CHECK(emits("{" BASE "\"keymap\": {"
+		    "  \"tab\": {\"hold\": {\"c\": {\"hold\": \"capslock\"}}},"
+		    "  \"capslock\": {\"hold\": {\"h\": \"left\"}}}}",
+		    "+tab +c +h -h -c -tab", "+left -left"));
+	/* a borrowed layer can be given a different lifetime than the original */
+	CHECK(emits("{" BASE "\"keymap\": {"
+		    "  \"capslock\": {\"hold\": {\"h\": \"left\"}},"
+		    "  \"f13\": {\"toggle\": \"capslock\", \"pass\": true}}}",
+		    "+f13 -f13 +h -h +f13 -f13 +h -h", "+left -left +h -h"));
+	/* and you can reach a layer further down, through the keys that open it */
+	CHECK(emits("{" BASE "\"keymap\": {"
+		    "  \"tab\": {\"hold\": {\"c\": {\"hold\": {\"h\": \"left\"}}}},"
+		    "  \"f13\": {\"hold\": \"tab.c\"}}}",
+		    "+f13 +h -h -f13", "+left -left"));
+}
+
 TEST(chord_shorthand_holds_its_modifiers)
 {
 	/* "ctrl+z" as a value behaves like the real chord: mods down first, up last */
@@ -237,7 +266,10 @@ TEST(the_front_end_rejects_nonsense)
 	CHECK(fails("{\"devices\": [null], \"keymap\": {\"a\": \"a\"}}", "device paths"));
 	CHECK(fails("{\"keymap\": {\"a\": {\"tap\": \"b\", \"allone\": true}}}", "unknown \"allone\""));
 	CHECK(fails("{\"keymap\": {\"ctrl+x ctrl+f\": {\"do\": \"quit\"}}}", "last step"));
-	CHECK(fails("{\"keymap\": {\"a\": {\"hold\": \"nope\"}}}", "no layer named"));
+	CHECK(fails("{\"keymap\": {\"a\": {\"hold\": \"nope\"}}}", "no layer by that name"));
+	CHECK(fails("{\"keymap\": {\"a\": \"a\", \"b\": {\"hold\": \"a\"}}}",
+		    "has no layer to borrow"));
+	CHECK(fails("{\"keymap\": {\"a\": {\"hold\": \"a\"}}}", "contains itself"));
 	CHECK(fails("{\"layers\": {\"x\": {\"a\": {\"hold\": \"x\"}}},"
 		    " \"keymap\": {\"b\": {\"hold\": \"x\"}}}",
 		    "contains itself"));
@@ -260,6 +292,7 @@ int main(void)
 	RUN(a_held_key_does_not_cancel_a_prefix);
 	RUN(a_hold_layer_outlives_a_layer_released_beneath_it);
 	RUN(named_layers_can_be_reused);
+	RUN(a_layer_can_be_borrowed_from_the_key_that_opens_it);
 	RUN(chord_shorthand_holds_its_modifiers);
 	RUN(include_pulls_in_layouts_from_other_files);
 	RUN(the_front_end_rejects_nonsense);
