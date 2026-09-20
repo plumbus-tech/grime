@@ -174,54 +174,6 @@ TEST(named_layers_can_be_reused)
 		    "+down -down +j -j"));
 }
 
-TEST(a_key_can_stand_in_for_another_key)
-{
-	/* "c": "capslock" means c *is* capslock: its tap and its layer both */
-	static const char *cfg =
-		"{" BASE "\"keymap\": {"
-		"  \"capslock\": {\"tap\": \"esc\", \"hold\": {\"h\": \"left\", \"j\": \"down\"}},"
-		"  \"tab\": {\"tap\": \"tab\", \"hold\": {\"c\": \"capslock\"}}}}";
-	CHECK(emits(cfg, "+tab +c -c -tab", "+esc -esc"));
-	CHECK(emits(cfg, "+tab +c +h -h +j -j -c -tab", "+left -left +down -down"));
-	/* the original still works, and so does tab's own tap */
-	CHECK(emits(cfg, "+capslock +h -h -capslock", "+left -left"));
-	CHECK(emits(cfg, "+tab -tab", "+tab -tab"));
-	/* order doesn't matter: stand in for a key defined later in the file */
-	CHECK(emits("{" BASE "\"keymap\": {"
-		    "  \"tab\": {\"hold\": {\"c\": \"capslock\"}},"
-		    "  \"capslock\": {\"hold\": {\"h\": \"left\"}}}}",
-		    "+tab +c +h -h -c -tab", "+left -left"));
-}
-
-TEST(a_plain_key_stays_a_plain_key)
-{
-	/* A key the keymap says nothing about is just itself, pressed on press.
-	 * If "a": "a" ever became tap-or-hold, rolling a into s would eat the a
-	 * and holding a would never autorepeat. */
-	CHECK(emits("{" BASE "\"keymap\": {\"a\": \"a\", \"s\": \"s\"}}", "+a +s -a -s",
-		    "+a +s -a -s"));
-	/* standing in for a key that has no layer is still a plain key */
-	CHECK(emits("{" BASE "\"keymap\": {\"a\": \"a\", \"f13\": \"a\"}}", "+f13 +s -f13 -s",
-		    "+a +s -a -s"));
-	/* and two keys pointing at each other resolve instead of hanging */
-	CHECK(emits("{" BASE "\"keymap\": {\"a\": \"b\", \"b\": \"a\"}}", "+a -a", "+b -b"));
-}
-
-TEST(a_borrowed_layer_can_be_given_a_new_lifetime)
-{
-	/* the layer slots still take a key name, for when you want the layer but
-	 * not the key -- here capslock's layer, made sticky instead of held */
-	CHECK(emits("{" BASE "\"keymap\": {"
-		    "  \"capslock\": {\"hold\": {\"h\": \"left\"}},"
-		    "  \"f13\": {\"toggle\": \"capslock\", \"pass\": true}}}",
-		    "+f13 -f13 +h -h +f13 -f13 +h -h", "+left -left +h -h"));
-	/* and a layer further down, through the keys that open it */
-	CHECK(emits("{" BASE "\"keymap\": {"
-		    "  \"tab\": {\"hold\": {\"c\": {\"hold\": {\"h\": \"left\"}}}},"
-		    "  \"f13\": {\"hold\": \"tab.c\"}}}",
-		    "+f13 +h -h -f13", "+left -left"));
-}
-
 TEST(chord_shorthand_holds_its_modifiers)
 {
 	/* "ctrl+z" as a value behaves like the real chord: mods down first, up last */
@@ -285,10 +237,7 @@ TEST(the_front_end_rejects_nonsense)
 	CHECK(fails("{\"devices\": [null], \"keymap\": {\"a\": \"a\"}}", "device paths"));
 	CHECK(fails("{\"keymap\": {\"a\": {\"tap\": \"b\", \"allone\": true}}}", "unknown \"allone\""));
 	CHECK(fails("{\"keymap\": {\"ctrl+x ctrl+f\": {\"do\": \"quit\"}}}", "last step"));
-	CHECK(fails("{\"keymap\": {\"a\": {\"hold\": \"nope\"}}}", "no layer by that name"));
-	CHECK(fails("{\"keymap\": {\"a\": \"a\", \"b\": {\"hold\": \"a\"}}}",
-		    "has no layer to borrow"));
-	CHECK(fails("{\"keymap\": {\"a\": {\"hold\": \"a\"}}}", "contains itself"));
+	CHECK(fails("{\"keymap\": {\"a\": {\"hold\": \"nope\"}}}", "no layer named"));
 	CHECK(fails("{\"layers\": {\"x\": {\"a\": {\"hold\": \"x\"}}},"
 		    " \"keymap\": {\"b\": {\"hold\": \"x\"}}}",
 		    "contains itself"));
@@ -311,9 +260,6 @@ int main(void)
 	RUN(a_held_key_does_not_cancel_a_prefix);
 	RUN(a_hold_layer_outlives_a_layer_released_beneath_it);
 	RUN(named_layers_can_be_reused);
-	RUN(a_key_can_stand_in_for_another_key);
-	RUN(a_plain_key_stays_a_plain_key);
-	RUN(a_borrowed_layer_can_be_given_a_new_lifetime);
 	RUN(chord_shorthand_holds_its_modifiers);
 	RUN(include_pulls_in_layouts_from_other_files);
 	RUN(the_front_end_rejects_nonsense);

@@ -80,9 +80,6 @@ The value is either a **key to behave like**, or an object of **slots**:
 | `hold` | a keymap | that keymap applies while this key is held |
 | `prefix` | a keymap | Emacs style: applies until one action fires, or an undefined key cancels it |
 | `toggle` | a keymap | sticky: applies until this same binding is pressed again |
-
-A keymap is written inline, or named: either an entry in `layers`, or **the key
-that opens it** (see "Borrowing a layer").
 | `tap` | an action | fires on release, only if nothing else was pressed meanwhile |
 | `release` | an action | fires on release, always |
 | `press` | an action | fires on press |
@@ -95,57 +92,6 @@ home-row mod, and `{"toggle": …, "do": …}` announces itself as it flips.
 
 An **action** is `{"do": "...", ...}`, or a string: `"esc"` taps that key,
 `"ctrl+z"` taps that chord.
-
-## Standing in for another key
-
-`"c": "capslock"` means **c is capslock** — not "c emits the capslock keycode",
-but "c does whatever capslock does". Tap it and you get capslock's tap; hold it
-and you are in capslock's layer:
-
-```json
-"capslock": { "tap": "esc", "hold": { "h": "left", "j": "down" } },
-"tab": { "tap": "tab", "hold": { "c": "capslock" } }
-```
-
-```
-tab c, released     ->  Esc          (capslock's tap)
-tab c, held + h     ->  Left         (capslock's layer)
-```
-
-You never say "tap" and "hold" twice. Which one applies is decided by what you
-actually did: let go without touching anything else and it was a tap; press
-something else first and it was a hold. That is the same `alone` rule every
-other release uses.
-
-**A key the keymap says nothing about is just itself.** `"a": "a"` presses `a`
-on press and releases it on release, because the keymap has no entry for `a`
-to stand in for — and that matters: if it waited for the release to decide,
-rolling `a` into `s` quickly would swallow the `a` and holding `a` would never
-autorepeat. Only a key that opens something can be tap-or-hold, because only
-then is there anything to wait for.
-
-The flip side is worth knowing: if you later give `a` a layer, every
-`"x": "a"` in your config starts standing in for that layer too. `grime --expand`
-shows you what you really have.
-
-### Borrowing just the layer
-
-The layer slots also take a key name, for when you want a key's layer but not
-the key:
-
-```json
-"f13": { "toggle": "capslock", "pass": true }
-```
-
-That is capslock's layer made **sticky** instead of held — one layer, two
-lifetimes. `"hold": "tab.c"` reaches further down, to the layer `tab` then `c`
-opens. Keys written as paths or chords (`"rightalt x f"`) aren't addressable
-this way; write them nested if you want to borrow from them.
-
-Order never matters, and a layer that ends up containing itself is a config
-error rather than a hang. Naming a layer in `layers` is still the better move
-when two keys share a *concept*; standing in is for when one key really is
-another.
 
 ## How the walk works
 
