@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "grime/action.h"
+#include "spec.h"
 #include "grime/keynames.h"
 
 #define SHIFT 0x8000
@@ -41,12 +42,9 @@ struct type_state {
 
 static int compile(json_object *spec, void **out, char *err, size_t errlen)
 {
-	json_object *v;
-	if (!json_object_object_get_ex(spec, "text", &v)) {
-		snprintf(err, errlen, "missing \"text\"");
+	const char *text = grime_spec_str_req(spec, "text", err, errlen);
+	if (!text)
 		return -1;
-	}
-	const char *text = json_object_get_string(v);
 	size_t n = strlen(text);
 	struct type_state *s = malloc(sizeof *s + n * sizeof(int));
 	s->n = n;

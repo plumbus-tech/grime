@@ -6,7 +6,7 @@ the other person's files.
 | Lane | owns | typical work |
 |---|---|---|
 | **A — platform/async** | `src/core/`, `src/backend/`, `src/actions/act_exec.c`, `act_http.c`, `scripts/` | loop, devices, hotplug, new OS backends, async actions |
-| **B — brain** | `src/engine/`, `src/config/`, `tests/` | walk semantics, config format, validation, engine tests |
+| **B — brain** | `src/engine/`, `src/config/`, `tests/` | walk semantics, config syntax (`src/config/lower.c`), validation, tests |
 | **shared contract** | `include/grime/*.h`, `docs/CONFIG.md` | changes need both of you |
 
 `.github/CODEOWNERS` encodes this (replace `@FRIEND` with the real handle).
@@ -28,8 +28,10 @@ Lane A
 - systemd user service + udev rule packaging.
 
 Lane B
-- Named keymaps / layers you can reference instead of inlining (`"then": "@nav"`).
-- One-shot modifiers. (Toggle layers exist: `"exit": "toggle"`.)
+- One-shot modifiers (sticky-for-one-key, as opposed to the `toggle` slot).
+- An action for "released after being used as a modifier" — the complement of
+  `tap`. Needs `grime_binding.alone` to become a tri-state, so: contract PR first.
+- Chords in non-final path steps (`"ctrl+x ctrl+f"`), which `lower.c` rejects today.
 - Event-only fix for home-row-mod rolls (e.g. resolve by release order), keeping the keymap free of timers.
-- `"include"` of other JSON files, layouts (dvorak etc.) as overlays.
+- `"include"` of other JSON files; more layouts as named layers.
 - More engine tests (deep nesting, reload while keys held).

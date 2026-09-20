@@ -1,331 +1,53 @@
 {
-  "devices": [
-    "auto"
-  ],
+  "devices": ["auto"],
+  "base": "qwerty",
+
   "keymap": {
-    "esc": "esc",
-    "f1": "f1",
-    "f2": "f2",
-    "f3": "f3",
-    "f4": "f4",
-    "f5": "f5",
-    "f6": "f6",
-    "f7": "f7",
-    "f8": "f8",
-    "f9": "f9",
-    "f10": "f10",
-    "f11": "f11",
-    "f12": "f12",
-    "sysrq": "sysrq",
-    "scrolllock": "scrolllock",
-    "pause": "pause",
-    "grave": "grave",
-    "1": "1",
-    "2": "2",
-    "3": "3",
-    "4": "4",
-    "5": "5",
-    "6": "6",
-    "7": "7",
-    "8": "8",
-    "9": "9",
-    "0": "0",
-    "minus": "minus",
-    "equal": "equal",
-    "backspace": "backspace",
-    "insert": "insert",
-    "home": "home",
-    "pageup": "pageup",
-    "tab": {
-      "press": {
-        "then": {
-          "f": {
-            "press": {
-              "do": "exec",
-              "cmd": "firefox"
-            }
-          },
-          "c": {
-            "press": {
-              "do": "tap",
-              "key": "capslock"
-            }
-          }
-        }
-      },
-      "release": {
-        "alone": true,
-        "do": "tap",
-        "key": "tab"
-      }
-    },
-    "q": "q",
-    "w": "w",
-    "e": "e",
-    "r": "r",
-    "t": "t",
-    "y": "y",
-    "u": "u",
-    "i": "i",
-    "o": "o",
-    "p": "p",
-    "leftbrace": "leftbrace",
-    "rightbrace": "rightbrace",
-    "backslash": "backslash",
-    "delete": "delete",
-    "end": "end",
-    "pagedown": "pagedown",
-    "a": "a",
-    "s": "s",
-    "d": "d",
-    "f": "f",
-    "g": "g",
-    "h": "h",
-    "j": "j",
-    "k": "k",
-    "l": "l",
-    "semicolon": "semicolon",
-    "apostrophe": "apostrophe",
-    "enter": "enter",
-    "leftshift": "leftshift",
-    "z": "z",
-    "x": "x",
-    "c": "c",
-    "v": "v",
-    "b": "b",
-    "n": "n",
-    "m": "m",
-    "comma": "comma",
-    "dot": "dot",
-    "slash": "slash",
-    "rightshift": "rightshift",
-    "up": "up",
-    "leftctrl": "leftctrl",
-    "leftmeta": "leftmeta",
-    "leftalt": "leftalt",
-    "space": "space",
-    "rightmeta": "rightmeta",
-    "compose": "compose",
-    "left": "left",
-    "down": "down",
-    "right": "right",
-    "numlock": "numlock",
-    "kpslash": "kpslash",
-    "kpasterisk": "kpasterisk",
-    "kpminus": "kpminus",
-    "kp7": "kp7",
-    "kp8": "kp8",
-    "kp9": "kp9",
-    "kpplus": "kpplus",
-    "kp4": "kp4",
-    "kp5": "kp5",
-    "kp6": "kp6",
-    "kp1": "kp1",
-    "kp2": "kp2",
-    "kp3": "kp3",
-    "kpenter": "kpenter",
-    "kp0": "kp0",
-    "kpdot": "kpdot",
-    "mute": "mute",
-    "volumedown": "volumedown",
-    "volumeup": "volumeup",
-    "playpause": "playpause",
-    "nextsong": "nextsong",
-    "previoussong": "previoussong",
-    "brightnessdown": "brightnessdown",
-    "brightnessup": "brightnessup",
     "capslock": {
-      "press": {
-        "then": {
-          "h": {
-            "press": {
-              "do": "tap",
-              "key": "left"
-            }
-          },
-          "j": {
-            "press": {
-              "do": "tap",
-              "key": "down"
-            }
-          },
-          "k": {
-            "press": {
-              "do": "tap",
-              "key": "up"
-            }
-          },
-          "l": {
-            "press": {
-              "do": "tap",
-              "key": "right"
-            }
-          },
-          "u": {
-            "press": {
-              "do": "tap",
-              "key": "z",
-              "mods": [
-                "leftctrl"
-              ]
-            }
-          },
-          "t": {
-            "press": {
-              "do": "exec",
-              "cmd": "notify-send grime 'hello from capslock+t'"
-            }
-          },
-          "y": {
-            "press": {
-              "do": "type",
-              "text": "typed by grime!"
-            }
-          },
-          "r": {
-            "press": {
-              "do": "reload"
-            }
-          },
-          "q": {
-            "press": {
-              "do": "quit"
-            }
-          },
-          "o": {
-            "press": {
-              "exit": "toggle",
-              "fallthrough": true,
-              "do": "exec",
-              "argv": [
-                "notify-send",
-                "grime",
-                "override mode toggled (capslock+o)"
-              ],
-              "then": {
-                "leftctrl": {
-                  "press": {
-                    "do": "press",
-                    "key": "leftctrl",
-                    "fallthrough": true,
-                    "then": {
-                      "f": {
-                        "press": {
-                          "do": "exec",
-                          "cmd": "firefox"
-                        }
-                      },
-                      "t": {
-                        "press": {
-                          "do": "exec",
-                          "argv": [
-                            "notify-send",
-                            "grime",
-                            "ctrl+t taken over by grime"
-                          ]
-                        }
-                      }
-                    }
-                  },
-                  "release": {
-                    "do": "release",
-                    "key": "leftctrl"
-                  }
-                }
-              }
-            }
-          },
-          "d": {
-            "press": {
-              "exit": "toggle",
-              "fallthrough": true,
-              "do": "exec",
-              "argv": [
-                "notify-send",
-                "grime",
-                "dvorak toggled (capslock+d)"
-              ],
-              "then": {
-                "minus": "leftbrace",
-                "equal": "rightbrace",
-                "q": "apostrophe",
-                "w": "comma",
-                "e": "dot",
-                "r": "p",
-                "t": "y",
-                "y": "f",
-                "u": "g",
-                "i": "c",
-                "o": "r",
-                "p": "l",
-                "leftbrace": "slash",
-                "rightbrace": "equal",
-                "s": "o",
-                "d": "e",
-                "f": "u",
-                "g": "i",
-                "h": "d",
-                "j": "h",
-                "k": "t",
-                "l": "n",
-                "semicolon": "s",
-                "apostrophe": "minus",
-                "z": "semicolon",
-                "x": "q",
-                "c": "j",
-                "v": "k",
-                "b": "x",
-                "n": "b",
-                "comma": "w",
-                "dot": "v",
-                "slash": "z"
-              }
-            }
-          }
-        }
-      },
-      "release": {
-        "alone": true,
-        "do": "tap",
-        "key": "esc"
+      "tap": "esc",
+      "hold": {
+        "h": "left", "j": "down", "k": "up", "l": "right",
+        "u": "ctrl+z",
+        "t": { "do": "exec", "cmd": "notify-send grime 'hello from capslock+t'" },
+        "y": { "do": "type", "text": "typed by grime!" },
+        "r": { "do": "reload" },
+        "q": { "do": "quit" },
+
+        "o": { "toggle": "override", "pass": true,
+               "do": "exec", "argv": ["notify-send", "grime", "override mode toggled (capslock+o)"] },
+        "d": { "toggle": "dvorak", "pass": true,
+               "do": "exec", "argv": ["notify-send", "grime", "dvorak toggled (capslock+d)"] }
       }
     },
-    "rightctrl": "rightctrl",
-    "rightalt": {
-      "press": {
-        "exit": "action",
-        "then": {
-          "x": {
-            "press": {
-              "exit": "action",
-              "then": {
-                "f": {
-                  "press": {
-                    "do": "exec",
-                    "cmd": "xdg-open ~"
-                  }
-                },
-                "t": {
-                  "press": {
-                    "do": "exec",
-                    "argv": [
-                      "notify-send",
-                      "grime",
-                      "rightalt x t"
-                    ]
-                  }
-                }
-              }
-            }
-          },
-          "l": {
-            "press": {
-              "do": "log",
-              "msg": "rightalt l pressed"
-            }
-          }
-        }
+
+    "tab": {
+      "tap": "tab",
+      "hold": {
+        "f": { "do": "exec", "cmd": "firefox" },
+        "c": "capslock"
       }
+    },
+
+    "rightalt x f": { "do": "exec", "cmd": "xdg-open ~" },
+    "rightalt x t": { "do": "exec", "argv": ["notify-send", "grime", "rightalt x t"] },
+    "rightalt l":   { "do": "log", "msg": "rightalt l pressed" }
+  },
+
+  "layers": {
+    "override": {
+      "ctrl+f": { "do": "exec", "cmd": "firefox" },
+      "ctrl+t": { "do": "exec", "argv": ["notify-send", "grime", "ctrl+t taken over by grime"] }
+    },
+
+    "dvorak": {
+      "minus": "leftbrace", "equal": "rightbrace",
+      "q": "apostrophe", "w": "comma", "e": "dot", "r": "p", "t": "y",
+      "y": "f", "u": "g", "i": "c", "o": "r", "p": "l",
+      "leftbrace": "slash", "rightbrace": "equal",
+      "s": "o", "d": "e", "f": "u", "g": "i", "h": "d",
+      "j": "h", "k": "t", "l": "n", "semicolon": "s", "apostrophe": "minus",
+      "z": "semicolon", "x": "q", "c": "j", "v": "k", "b": "x",
+      "n": "b", "comma": "w", "dot": "v", "slash": "z"
     }
   }
 }

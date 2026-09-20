@@ -14,6 +14,9 @@ typedef struct {
 
 int grime_config_load(const char *path, grime_config *out, char *err, size_t errlen);
 int grime_config_parse(const char *json, grime_config *out, char *err, size_t errlen);
+/* The config as the canonical tree grime actually walks, for --expand.
+ * Returns a malloc'd string the caller frees, or NULL with err set. */
+char *grime_config_expand(const char *path, char *err, size_t errlen);
 void grime_config_free(grime_config *cfg); /* frees keymap unless it was taken (set to NULL) */
 
 #endif

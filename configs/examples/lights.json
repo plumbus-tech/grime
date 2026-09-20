@@ -1,153 +1,28 @@
 {
-  "devices": [
-    "auto"
-  ],
+  "devices": ["auto"],
+  "base": "qwerty",
+
   "keymap": {
-    "esc": "esc",
-    "f1": "f1",
-    "f2": "f2",
-    "f3": "f3",
-    "f4": "f4",
-    "f5": "f5",
-    "f6": "f6",
-    "f7": "f7",
-    "f8": "f8",
-    "f9": "f9",
-    "f10": "f10",
-    "f11": "f11",
     "f12": {
-      "press": {
-        "then": {
-          "l": {
-            "press": {
-              "do": "http",
-              "method": "POST",
-              "url": "http://homeassistant.local:8123/api/services/light/toggle",
-              "headers": [
-                "Authorization: Bearer ${HA_TOKEN}",
-                "Content-Type: application/json"
-              ],
-              "body": {
-                "entity_id": "light.desk"
-              }
-            }
-          },
-          "o": {
-            "press": {
-              "do": "http",
-              "method": "PUT",
-              "url": "http://${HUE_BRIDGE}/api/${HUE_USER}/lights/1/state",
-              "body": {
-                "on": false
-              }
-            }
-          }
+      "tap": "f12",
+      "hold": {
+        "l": {
+          "do": "http",
+          "method": "POST",
+          "url": "http://homeassistant.local:8123/api/services/light/toggle",
+          "headers": [
+            "Authorization: Bearer ${HA_TOKEN}",
+            "Content-Type: application/json"
+          ],
+          "body": { "entity_id": "light.desk" }
+        },
+        "o": {
+          "do": "http",
+          "method": "PUT",
+          "url": "http://${HUE_BRIDGE}/api/${HUE_USER}/lights/1/state",
+          "body": { "on": false }
         }
-      },
-      "release": {
-        "alone": true,
-        "do": "tap",
-        "key": "f12"
       }
-    },
-    "sysrq": "sysrq",
-    "scrolllock": "scrolllock",
-    "pause": "pause",
-    "grave": "grave",
-    "1": "1",
-    "2": "2",
-    "3": "3",
-    "4": "4",
-    "5": "5",
-    "6": "6",
-    "7": "7",
-    "8": "8",
-    "9": "9",
-    "0": "0",
-    "minus": "minus",
-    "equal": "equal",
-    "backspace": "backspace",
-    "insert": "insert",
-    "home": "home",
-    "pageup": "pageup",
-    "tab": "tab",
-    "q": "q",
-    "w": "w",
-    "e": "e",
-    "r": "r",
-    "t": "t",
-    "y": "y",
-    "u": "u",
-    "i": "i",
-    "o": "o",
-    "p": "p",
-    "leftbrace": "leftbrace",
-    "rightbrace": "rightbrace",
-    "backslash": "backslash",
-    "delete": "delete",
-    "end": "end",
-    "pagedown": "pagedown",
-    "capslock": "capslock",
-    "a": "a",
-    "s": "s",
-    "d": "d",
-    "f": "f",
-    "g": "g",
-    "h": "h",
-    "j": "j",
-    "k": "k",
-    "l": "l",
-    "semicolon": "semicolon",
-    "apostrophe": "apostrophe",
-    "enter": "enter",
-    "leftshift": "leftshift",
-    "z": "z",
-    "x": "x",
-    "c": "c",
-    "v": "v",
-    "b": "b",
-    "n": "n",
-    "m": "m",
-    "comma": "comma",
-    "dot": "dot",
-    "slash": "slash",
-    "rightshift": "rightshift",
-    "up": "up",
-    "leftctrl": "leftctrl",
-    "leftmeta": "leftmeta",
-    "leftalt": "leftalt",
-    "space": "space",
-    "rightalt": "rightalt",
-    "rightmeta": "rightmeta",
-    "compose": "compose",
-    "rightctrl": "rightctrl",
-    "left": "left",
-    "down": "down",
-    "right": "right",
-    "numlock": "numlock",
-    "kpslash": "kpslash",
-    "kpasterisk": "kpasterisk",
-    "kpminus": "kpminus",
-    "kp7": "kp7",
-    "kp8": "kp8",
-    "kp9": "kp9",
-    "kpplus": "kpplus",
-    "kp4": "kp4",
-    "kp5": "kp5",
-    "kp6": "kp6",
-    "kp1": "kp1",
-    "kp2": "kp2",
-    "kp3": "kp3",
-    "kpenter": "kpenter",
-    "kp0": "kp0",
-    "kpdot": "kpdot",
-    "mute": "mute",
-    "volumedown": "volumedown",
-    "volumeup": "volumeup",
-    "playpause": "playpause",
-    "nextsong": "nextsong",
-    "previoussong": "previoussong",
-    "brightnessdown": "brightnessdown",
-    "brightnessup": "brightnessup"
+    }
   }
 }

@@ -34,8 +34,13 @@ things (processes, HTTP) are fds/timers on the loop.
 | `runtime.h`  | what actions can touch; `grime_emit` tracks held keys | `src/core/runtime.c` |
 | `action.h`   | action types + registry, `GRIME_REGISTER_ACTION` | `src/actions/registry.c` |
 | `engine.h`   | keymap tree + walker | `src/engine/engine.c` |
-| `config.h`   | JSON → tree | `src/config/config.c` |
+| `config.h`   | JSON → tree | `src/config/lower.c` (syntax) + `config.c` (tree) |
 | `keynames.h` | `"capslock"` ↔ 58 | `src/engine/keynames.c` (+ generated `keynames_table.inc`) |
+
+**Config in two steps:** `lower.c` rewrites the friendly syntax (slots, key
+paths, chords, named layers, `"base": "qwerty"`) into one canonical shape, and
+`config.c` turns only that into the tree. So the sugar can never mean something
+the tree can't say, and `grime --expand` shows you the result.
 
 **Engine purity:** `src/engine` and `src/config` never include Linux headers,
 so they're unit-tested with a recording output (`tests/test_engine.c`) and will

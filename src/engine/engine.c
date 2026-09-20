@@ -3,15 +3,16 @@
  *     the frames below it too. No match -> nothing happens.
  *  2. A release is looked up in the node where that key's press was handled,
  *     so press/release stay paired even if the context changed meanwhile.
- *  3. A binding with "then" pushes a frame. EXIT_RELEASE frames pop when the
- *     key that pushed them is released; EXIT_ACTION frames pop (as a chain)
- *     once an action fires inside them or on an unmatched press.
- *     EXIT_TOGGLE frames stay until the binding that pushed them is pressed
- *     again, from wherever it is reachable; every other pop leaves them in
- *     place (frames above slide down), so a toggle can be turned on at any
- *     depth and outlives the layers it was turned on from.
- *  4. "alone" release bindings only fire if no other key was pressed while
- *     this one was held.
+ *  3. A binding with "then" pushes a frame. Frames are an ordered set of live
+ *     layers, not a path: each one lives by its own rule and the ones below it
+ *     can come and go underneath it (survivors slide down).
+ *       EXIT_RELEASE lives exactly as long as the key that pushed it is down.
+ *       EXIT_ACTION  lives until an action fires inside it, or an unmatched
+ *                    press cancels it -- the whole prefix chain goes at once.
+ *       EXIT_TOGGLE  lives until the binding that pushed it is pressed again,
+ *                    from wherever that binding is reachable.
+ *  4. "alone" release bindings only fire if no other key was pressed after
+ *     this one was pressed (a key already down does not count).
  * The walk is driven purely by press/release events: no timers, no clocks. */
 #include "grime/engine.h"
 
@@ -124,14 +125,21 @@ static bool is_toggle(const struct frame *f)
 	return f->via && f->via->exit == GRIME_EXIT_TOGGLE;
 }
 
-/* Drop frames from index `depth` up, except toggles, which slide down. */
+/* A hold frame lives exactly as long as its key is down, wherever it sits. */
+static bool still_held(const grime_engine *e, const struct frame *f)
+{
+	return f->via && f->via->exit == GRIME_EXIT_RELEASE && f->key >= 0 &&
+	       e->keys[f->key].down;
+}
+
+/* Drop frames from index `depth` up; toggles and still-held layers slide down. */
 static void pop_to(grime_engine *e, int depth)
 {
 	if (depth < 1)
 		depth = 1;
 	int w = depth;
 	for (int r = depth; r < e->depth; r++)
-		if (is_toggle(&e->stack[r]))
+		if (is_toggle(&e->stack[r]) || still_held(e, &e->stack[r]))
 			e->stack[w++] = e->stack[r];
 	if (w < e->depth) {
 		LOG_DEBUG("leave %d level(s)", e->depth - w);
@@ -144,7 +152,8 @@ static void pop_to(grime_engine *e, int depth)
 static void pop_prefixes(grime_engine *e)
 {
 	int d = e->depth;
-	while (d > 1 && (e->stack[d - 1].via->exit == GRIME_EXIT_ACTION || is_toggle(&e->stack[d - 1])))
+	while (d > 1 && (e->stack[d - 1].via->exit == GRIME_EXIT_ACTION ||
+			 is_toggle(&e->stack[d - 1]) || still_held(e, &e->stack[d - 1])))
 		d--;
 	pop_to(e, d);
 }
@@ -275,8 +284,8 @@ static void on_release(grime_engine *e, uint16_t code)
 	fire(e, b, code, "release");
 	if (b->then)
 		push(e, b, code);
-	else if (b->action)
-		pop_prefixes(e);
+	else if (b->action && ks->node == e->stack[e->depth - 1].node)
+		pop_prefixes(e); /* only if it fired *inside* the prefix */
 }
 
 void grime_engine_feed(grime_engine *e, const grime_key_event *ev)

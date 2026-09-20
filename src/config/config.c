@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "grime/keynames.h"
+#include "lower.h"
 
 static int fail(char *err, size_t errlen, const char *path, const char *fmt, ...)
 {
@@ -23,26 +24,6 @@ static int fail(char *err, size_t errlen, const char *path, const char *fmt, ...
 
 static int parse_keymap(json_object *obj, grime_node *node, const char *path, char *err,
 			size_t errlen);
-
-/* "a": "b"  ->  press b on press, release b on release */
-static int bind_shorthand(grime_node *node, uint16_t code, const char *target, const char *path,
-			  char *err, size_t errlen)
-{
-	if (grime_key_from_name(target) < 0)
-		return fail(err, errlen, path, "unknown key \"%s\" (see grime --list-keys)", target);
-	static const char *edges[] = {"press", "release"};
-	for (int i = 0; i < 2; i++) {
-		json_object *spec = json_object_new_object();
-		json_object_object_add(spec, "do", json_object_new_string(edges[i]));
-		json_object_object_add(spec, "key", json_object_new_string(target));
-		grime_binding *b = grime_node_bind(node, code, i ? GRIME_RELEASE : GRIME_PRESS);
-		b->action = grime_action_compile(spec, err, errlen);
-		json_object_put(spec);
-		if (!b->action)
-			return -1;
-	}
-	return 0;
-}
 
 static int parse_binding(json_object *obj, grime_binding *b, grime_edge edge, const char *path,
 			 char *err, size_t errlen)
@@ -108,13 +89,8 @@ static int parse_keymap(json_object *obj, grime_node *node, const char *path, ch
 		if (code < 0)
 			return fail(err, errlen, sub, "unknown key \"%s\" (see grime --list-keys)", name);
 
-		if (json_object_is_type(val, json_type_string)) {
-			if (bind_shorthand(node, code, json_object_get_string(val), sub, err, errlen) < 0)
-				return -1;
-			continue;
-		}
 		if (!json_object_is_type(val, json_type_object))
-			return fail(err, errlen, sub, "expected \"key\" or {\"press\": ..., \"release\": ...}");
+			return fail(err, errlen, sub, "expected a binding object");
 
 		json_object_object_foreach(val, edge_name, spec)
 		{
@@ -146,10 +122,19 @@ static int parse_root(json_object *root, grime_config *out, char *err, size_t er
 		if (!json_object_is_type(v, json_type_array))
 			return fail(err, errlen, "devices", "expected an array of paths or [\"auto\"]");
 		size_t n = json_object_array_length(v);
+		if (!n)
+			return fail(err, errlen, "devices",
+				    "empty list: grime would grab nothing. Use [\"auto\"]");
 		out->devices = calloc(n, sizeof(char *));
-		for (size_t i = 0; i < n; i++)
-			out->devices[out->ndevices++] =
-				strdup(json_object_get_string(json_object_array_get_idx(v, i)));
+		if (!out->devices)
+			return fail(err, errlen, "devices", "out of memory");
+		for (size_t i = 0; i < n; i++) {
+			json_object *d = json_object_array_get_idx(v, i);
+			if (!json_object_is_type(d, json_type_string))
+				return fail(err, errlen, "devices",
+					    "expected device paths or [\"auto\"]");
+			out->devices[out->ndevices++] = strdup(json_object_get_string(d));
+		}
 	} else {
 		out->devices = calloc(1, sizeof(char *));
 		out->devices[out->ndevices++] = strdup("auto");
@@ -163,11 +148,34 @@ static int parse_root(json_object *root, grime_config *out, char *err, size_t er
 
 static int finish(json_object *root, grime_config *out, char *err, size_t errlen)
 {
-	int rc = parse_root(root, out, err, errlen);
+	json_object *canon = grime_config_lower(root, err, errlen);
 	json_object_put(root);
+	if (!canon) {
+		memset(out, 0, sizeof *out);
+		return -1;
+	}
+	int rc = parse_root(canon, out, err, errlen);
+	json_object_put(canon);
 	if (rc < 0)
 		grime_config_free(out);
 	return rc;
+}
+
+char *grime_config_expand(const char *path, char *err, size_t errlen)
+{
+	json_object *root = json_object_from_file(path);
+	if (!root) {
+		fail(err, errlen, path, "%s", json_util_get_last_err());
+		return NULL;
+	}
+	json_object *canon = grime_config_lower(root, err, errlen);
+	json_object_put(root);
+	if (!canon)
+		return NULL;
+	const char *s = json_object_to_json_string_ext(canon, JSON_C_TO_STRING_PRETTY);
+	char *copy = s ? strdup(s) : NULL;
+	json_object_put(canon);
+	return copy;
 }
 
 int grime_config_parse(const char *json, grime_config *out, char *err, size_t errlen)

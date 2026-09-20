@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "grime/action.h"
+#include "spec.h"
 #include "grime/log.h"
 
 static void run_reload(grime_runtime *rt, void *state)
@@ -24,12 +25,10 @@ static void run_quit(grime_runtime *rt, void *state)
 
 static int compile_log(json_object *spec, void **out, char *err, size_t errlen)
 {
-	json_object *v;
-	if (!json_object_object_get_ex(spec, "msg", &v)) {
-		snprintf(err, errlen, "missing \"msg\"");
+	const char *msg = grime_spec_str_req(spec, "msg", err, errlen);
+	if (!msg)
 		return -1;
-	}
-	*out = strdup(json_object_get_string(v));
+	*out = strdup(msg);
 	return 0;
 }
 

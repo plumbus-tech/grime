@@ -14,6 +14,7 @@
 #include <unistd.h>
 
 #include "grime/action.h"
+#include "spec.h"
 #include "grime/log.h"
 
 extern char **environ;
@@ -33,23 +34,37 @@ static void exec_free(void *state)
 
 static int compile(json_object *spec, void **out, char *err, size_t errlen)
 {
-	json_object *v;
+	const char *cmd = grime_spec_str(spec, "cmd");
+	bool bad;
+	json_object *argv = grime_spec_array(spec, "argv", err, errlen, &bad);
+	if (bad)
+		return -1;
+	size_t n = argv ? json_object_array_length(argv) : 0;
+	if (!cmd && !n) {
+		snprintf(err, errlen, "needs \"cmd\" (string) or \"argv\" (non-empty array)");
+		return -1;
+	}
 	struct exec_state *s = calloc(1, sizeof *s);
-	if (json_object_object_get_ex(spec, "cmd", &v)) {
+	if (!s) {
+		snprintf(err, errlen, "out of memory");
+		return -1;
+	}
+	if (cmd) {
 		s->argv = calloc(4, sizeof(char *));
 		s->argv[0] = strdup("/bin/sh");
 		s->argv[1] = strdup("-c");
-		s->argv[2] = strdup(json_object_get_string(v));
-	} else if (json_object_object_get_ex(spec, "argv", &v) &&
-		   json_object_is_type(v, json_type_array) && json_object_array_length(v) > 0) {
-		size_t n = json_object_array_length(v);
-		s->argv = calloc(n + 1, sizeof(char *));
-		for (size_t i = 0; i < n; i++)
-			s->argv[i] = strdup(json_object_get_string(json_object_array_get_idx(v, i)));
+		s->argv[2] = strdup(cmd);
 	} else {
-		free(s);
-		snprintf(err, errlen, "needs \"cmd\" (string) or \"argv\" (non-empty array)");
-		return -1;
+		s->argv = calloc(n + 1, sizeof(char *));
+		for (size_t i = 0; i < n; i++) {
+			json_object *e = json_object_array_get_idx(argv, i);
+			if (!json_object_is_type(e, json_type_string)) {
+				snprintf(err, errlen, "\"argv\" must hold strings");
+				exec_free(s);
+				return -1;
+			}
+			s->argv[i] = strdup(json_object_get_string(e));
+		}
 	}
 	*out = s;
 	return 0;

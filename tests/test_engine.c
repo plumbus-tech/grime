@@ -93,10 +93,7 @@ TEST(any_key_can_type_anything)
 static const char *caps_layer =
 	"{\"keymap\": {"
 	"  \"h\": \"h\","
-	"  \"capslock\": {"
-	"    \"press\": {\"then\": {\"h\": {\"press\": {\"do\": \"tap\", \"key\": \"left\"}}}},"
-	"    \"release\": {\"alone\": true, \"do\": \"tap\", \"key\": \"esc\"}"
-	"  }"
+	"  \"capslock\": {\"tap\": \"esc\", \"hold\": {\"h\": \"left\"}}"
 	"}}";
 
 TEST(hold_layer)
@@ -131,9 +128,7 @@ TEST(release_stays_paired_across_context_change)
 static const char *emacs =
 	"{\"keymap\": {"
 	"  \"a\": \"a\","
-	"  \"rightctrl\": {\"press\": {\"exit\": \"action\", \"then\": {"
-	"    \"x\": {\"press\": {\"exit\": \"action\", \"then\": {"
-	"      \"f\": {\"press\": {\"do\": \"type\", \"text\": \"F!\"}}}}}}}}"
+	"  \"rightctrl x f\": {\"do\": \"type\", \"text\": \"F!\"}"
 	"}}";
 
 TEST(emacs_prefix_sequence)
@@ -157,17 +152,9 @@ TEST(emacs_prefix_cancelled_by_unmapped_key)
 static const char *override =
 	"{\"keymap\": {"
 	"  \"s\": \"s\", \"f\": \"f\", \"leftctrl\": \"leftctrl\","
-	"  \"f13\": {\"press\": {\"exit\": \"toggle\", \"fallthrough\": true, \"then\": {"
-	"    \"leftctrl\": {"
-	"      \"press\": {\"do\": \"press\", \"key\": \"leftctrl\", \"fallthrough\": true, \"then\": {"
-	"        \"f\": {\"press\": {\"do\": \"tap\", \"key\": \"f1\"}}}},"
-	"      \"release\": {\"do\": \"release\", \"key\": \"leftctrl\"}}}}},"
-	"  \"capslock\": {\"press\": {\"then\": {"
-	"    \"o\": {\"press\": {\"exit\": \"toggle\", \"fallthrough\": true, \"then\": {"
-	"      \"s\": \"f\"}}}}}},"
-	"  \"rightalt\": {\"press\": {\"exit\": \"action\", \"then\": {"
-	"    \"o\": {\"press\": {\"exit\": \"toggle\", \"fallthrough\": true, \"then\": {"
-	"      \"f\": \"s\"}}}}}}"
+	"  \"f13\":     {\"pass\": true, \"toggle\": {\"ctrl+f\": {\"do\": \"tap\", \"key\": \"f1\"}}},"
+	"  \"capslock\": {\"hold\":   {\"o\": {\"pass\": true, \"toggle\": {\"s\": \"f\"}}}},"
+	"  \"rightalt\": {\"prefix\": {\"o\": {\"pass\": true, \"toggle\": {\"f\": \"s\"}}}}"
 	"}}";
 
 TEST(toggle_overrides_chords_until_toggled_again)
@@ -220,8 +207,9 @@ TEST(toggles_stack)
 
 TEST(fallthrough_to_parent)
 {
-	grime_engine *e = load("{\"keymap\": {\"a\": \"a\", \"space\": {\"press\": {\"fallthrough\": true, "
-			       "\"then\": {\"j\": {\"press\": {\"do\": \"tap\", \"key\": \"down\"}}}}}}}");
+	grime_engine *e =
+		load("{\"keymap\": {\"a\": \"a\", "
+		     "\"space\": {\"pass\": true, \"hold\": {\"j\": \"down\"}}}}");
 	feed(e, "+space +j -j +a -a -space");
 	CHECK(!strcmp(rec, "+down -down +a -a"));
 	grime_engine_free(e);
@@ -229,7 +217,7 @@ TEST(fallthrough_to_parent)
 
 TEST(quit_action)
 {
-	grime_engine *e = load("{\"keymap\": {\"f12\": {\"press\": {\"do\": \"quit\"}}}}");
+	grime_engine *e = load("{\"keymap\": {\"f12\": {\"do\": \"quit\"}}}");
 	quits = 0;
 	feed(e, "+f12 -f12");
 	CHECK(quits == 1);
@@ -238,16 +226,22 @@ TEST(quit_action)
 
 TEST(config_errors_are_helpful)
 {
-	CHECK(config_fails("{\"keymap\": {\"nope\": \"a\"}}", "keymap.nope"));
+	CHECK(config_fails("{\"keymap\": {\"nope\": \"a\"}}", "unknown key \"nope\""));
 	CHECK(config_fails("{\"keymap\": {\"a\": \"nope\"}}", "unknown key \"nope\""));
-	CHECK(config_fails("{\"keymap\": {\"a\": {\"press\": {\"do\": \"fly\"}}}}", "unknown action"));
-	CHECK(config_fails("{\"keymap\": {\"a\": {\"hold\": {}}}}", "keymap.a.hold"));
-	CHECK(config_fails("{\"keymap\": {\"a\": {\"press\": {\"alone\": true, \"do\": \"quit\"}}}}", "alone"));
+	CHECK(config_fails("{\"keymap\": {\"a\": {\"do\": \"fly\"}}}", "unknown action"));
 	CHECK(config_fails("{\"keymap\": ", "invalid JSON"));
-	CHECK(config_fails("{\"keymap\": {\"a\": {\"press\": {\"exit\": \"toggle\", \"do\": \"quit\"}}}}",
-			   "needs a \"then\""));
-	CHECK(config_fails("{\"keymap\": {\"a\": {\"release\": {\"exit\": \"toggle\", \"then\": {}}}}}",
-			   "only works on a press"));
+	CHECK(config_fails("{\"keymap\": {\"a\": {}}}", "nothing to do"));
+	CHECK(config_fails("{\"keymap\": {\"a\": {\"tap\": \"b\", \"release\": \"c\"}}}",
+			   "can't both be on one key"));
+	CHECK(config_fails("{\"keymap\": {\"a\": {\"hold\": {}, \"toggle\": {}}}}",
+			   "can't both be on one key"));
+	CHECK(config_fails("{\"keymap\": {\"a\": {\"pass\": true, \"tap\": \"b\"}}}",
+			   "\"pass\" needs a layer"));
+	/* the retired spellings say what to use instead */
+	CHECK(config_fails("{\"keymap\": {\"a\": {\"press\": {\"then\": {}}}}}", "\"then\" is gone"));
+	CHECK(config_fails("{\"keymap\": {\"a\": {\"exit\": \"toggle\"}}}", "\"exit\" is gone"));
+	CHECK(config_fails("{\"keymap\": {\"a\": {\"alone\": true}}}", "\"alone\" is gone"));
+	CHECK(config_fails("{\"keymap\": {\"a\": {\"fallthrough\": true}}}", "\"fallthrough\" is gone"));
 }
 
 int main(void)

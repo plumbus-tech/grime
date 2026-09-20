@@ -10,6 +10,7 @@
 
 #include "expand.h"
 #include "grime/action.h"
+#include "spec.h"
 #include "grime/log.h"
 
 struct http_state {
@@ -144,23 +145,36 @@ static void http_free(void *state)
 static int compile(json_object *spec, void **out, char *err, size_t errlen)
 {
 	json_object *v;
-	if (!json_object_object_get_ex(spec, "url", &v)) {
-		snprintf(err, errlen, "missing \"url\"");
+	const char *url = grime_spec_str_req(spec, "url", err, errlen);
+	if (!url)
+		return -1;
+	const char *method = grime_spec_str(spec, "method");
+	bool bad;
+	json_object *headers = grime_spec_array(spec, "headers", err, errlen, &bad);
+	if (bad)
+		return -1;
+	struct http_state *s = calloc(1, sizeof *s);
+	if (!s) {
+		snprintf(err, errlen, "out of memory");
 		return -1;
 	}
-	struct http_state *s = calloc(1, sizeof *s);
-	s->url = strdup(json_object_get_string(v));
-	s->method = strdup(json_object_object_get_ex(spec, "method", &v) ? json_object_get_string(v) : "GET");
+	s->url = strdup(url);
+	s->method = strdup(method ? method : "GET");
 	if (json_object_object_get_ex(spec, "body", &v))
 		s->body = strdup(json_object_is_type(v, json_type_string)
 					 ? json_object_get_string(v)
 					 : json_object_to_json_string_ext(v, JSON_C_TO_STRING_PLAIN));
 	s->timeout_ms = json_object_object_get_ex(spec, "timeout_ms", &v) ? json_object_get_int(v) : 10000;
-	if (json_object_object_get_ex(spec, "headers", &v) && json_object_is_type(v, json_type_array)) {
-		s->nheaders = json_object_array_length(v);
-		s->headers = calloc(s->nheaders, sizeof(char *));
-		for (size_t i = 0; i < s->nheaders; i++)
-			s->headers[i] = strdup(json_object_get_string(json_object_array_get_idx(v, i)));
+	for (size_t i = 0; headers && i < json_object_array_length(headers); i++) {
+		json_object *e = json_object_array_get_idx(headers, i);
+		if (!json_object_is_type(e, json_type_string)) {
+			snprintf(err, errlen, "\"headers\" must hold strings");
+			http_free(s);
+			return -1;
+		}
+		if (!s->headers)
+			s->headers = calloc(json_object_array_length(headers), sizeof(char *));
+		s->headers[s->nheaders++] = strdup(json_object_get_string(e));
 	}
 	*out = s;
 	return 0;

@@ -7,6 +7,7 @@
 #include <stdlib.h>
 
 #include "grime/action.h"
+#include "spec.h"
 #include "grime/keynames.h"
 
 #define MAX_MODS 8
@@ -19,30 +20,42 @@ struct key_state {
 
 static int compile(json_object *spec, void **out, char *err, size_t errlen)
 {
-	json_object *v;
-	if (!json_object_object_get_ex(spec, "key", &v)) {
-		snprintf(err, errlen, "missing \"key\"");
+	const char *key = grime_spec_str_req(spec, "key", err, errlen);
+	if (!key)
 		return -1;
-	}
-	int code = grime_key_from_name(json_object_get_string(v));
+	int code = grime_key_from_name(key);
 	if (code < 0) {
-		snprintf(err, errlen, "unknown key \"%s\"", json_object_get_string(v));
+		snprintf(err, errlen, "unknown key \"%s\"", key);
 		return -1;
 	}
+	bool bad;
+	json_object *mods = grime_spec_array(spec, "mods", err, errlen, &bad);
+	if (bad)
+		return -1;
 	struct key_state *s = calloc(1, sizeof *s);
+	if (!s) {
+		snprintf(err, errlen, "out of memory");
+		return -1;
+	}
 	s->key = code;
-	if (json_object_object_get_ex(spec, "mods", &v)) {
-		size_t n = json_object_array_length(v);
-		for (size_t i = 0; i < n && i < MAX_MODS; i++) {
-			const char *name = json_object_get_string(json_object_array_get_idx(v, i));
-			int m = grime_key_from_name(name);
-			if (m < 0) {
-				snprintf(err, errlen, "unknown mod key \"%s\"", name);
-				free(s);
-				return -1;
-			}
-			s->mods[s->nmods++] = m;
+	size_t n = mods ? json_object_array_length(mods) : 0;
+	if (n > MAX_MODS) {
+		snprintf(err, errlen, "at most %d \"mods\"", MAX_MODS);
+		free(s);
+		return -1;
+	}
+	for (size_t i = 0; i < n; i++) {
+		json_object *e = json_object_array_get_idx(mods, i);
+		const char *name = json_object_is_type(e, json_type_string)
+					   ? json_object_get_string(e)
+					   : NULL;
+		int m = name ? grime_key_from_name(name) : -1;
+		if (m < 0) {
+			snprintf(err, errlen, "unknown mod key \"%s\"", name ? name : "(not a string)");
+			free(s);
+			return -1;
 		}
+		s->mods[s->nmods++] = m;
 	}
 	*out = s;
 	return 0;

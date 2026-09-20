@@ -37,6 +37,7 @@ static void usage(FILE *f)
 		"  -t, --timeout SEC   exit automatically after SEC seconds (safety net while testing)\n"
 		"  -n, --dry-run       don't grab or emit; log what would happen\n"
 		"      --check         validate the config and exit\n"
+		"      --expand        print the config as the tree grime walks\n"
 		"      --list-keys     print every key name\n"
 		"      --list-actions  print every action name\n"
 		"  -v, --verbose       log every step of the keymap walk\n"
@@ -155,15 +156,16 @@ static void print_action(const char *name, void *ud)
 
 int main(int argc, char **argv)
 {
-	enum { OPT_CHECK = 256, OPT_LIST_KEYS, OPT_LIST_ACTIONS };
+	enum { OPT_CHECK = 256, OPT_LIST_KEYS, OPT_LIST_ACTIONS, OPT_EXPAND };
 	static const struct option opts[] = {
 		{"config", required_argument, 0, 'c'},     {"timeout", required_argument, 0, 't'},
 		{"dry-run", no_argument, 0, 'n'},          {"verbose", no_argument, 0, 'v'},
 		{"help", no_argument, 0, 'h'},             {"check", no_argument, 0, OPT_CHECK},
 		{"list-keys", no_argument, 0, OPT_LIST_KEYS}, {"list-actions", no_argument, 0, OPT_LIST_ACTIONS},
+		{"expand", no_argument, 0, OPT_EXPAND},
 		{0},
 	};
-	bool dry_run = false, check = false;
+	bool dry_run = false, check = false, expand = false;
 	int timeout_s = 0, c;
 	app.config_path = NULL;
 	while ((c = getopt_long(argc, argv, "c:t:nvh", opts, NULL)) != -1) {
@@ -173,6 +175,7 @@ int main(int argc, char **argv)
 		case 'n': dry_run = true; break;
 		case 'v': grime_log_level = GRIME_LOG_DEBUG; break;
 		case OPT_CHECK: check = true; break;
+		case OPT_EXPAND: expand = true; break;
 		case OPT_LIST_KEYS: grime_key_list(stdout); return 0;
 		case OPT_LIST_ACTIONS: grime_action_list(print_action, NULL); return 0;
 		case 'h': usage(stdout); return 0;
@@ -182,8 +185,19 @@ int main(int argc, char **argv)
 	if (!app.config_path)
 		app.config_path = default_config_path();
 
-	grime_config cfg;
 	char err[512];
+	if (expand) {
+		char *text = grime_config_expand(app.config_path, err, sizeof err);
+		if (!text) {
+			LOG_ERR("config: %s", err);
+			return 1;
+		}
+		puts(text);
+		free(text);
+		return 0;
+	}
+
+	grime_config cfg;
 	if (grime_config_load(app.config_path, &cfg, err, sizeof err) < 0) {
 		LOG_ERR("config: %s", err);
 		return 1;
