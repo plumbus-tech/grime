@@ -146,9 +146,10 @@ static int parse_root(json_object *root, grime_config *out, char *err, size_t er
 	return parse_keymap(v, out->keymap, "keymap", err, errlen);
 }
 
-static int finish(json_object *root, grime_config *out, char *err, size_t errlen)
+static int finish(json_object *root, const char *path, grime_config *out, char *err,
+		  size_t errlen)
 {
-	json_object *canon = grime_config_lower(root, err, errlen);
+	json_object *canon = grime_config_lower(root, path, err, errlen);
 	json_object_put(root);
 	if (!canon) {
 		memset(out, 0, sizeof *out);
@@ -168,7 +169,7 @@ char *grime_config_expand(const char *path, char *err, size_t errlen)
 		fail(err, errlen, path, "%s", json_util_get_last_err());
 		return NULL;
 	}
-	json_object *canon = grime_config_lower(root, err, errlen);
+	json_object *canon = grime_config_lower(root, path, err, errlen);
 	json_object_put(root);
 	if (!canon)
 		return NULL;
@@ -188,7 +189,7 @@ int grime_config_parse(const char *json, grime_config *out, char *err, size_t er
 		memset(out, 0, sizeof *out);
 		return fail(err, errlen, "config", "invalid JSON: %s", json_tokener_error_desc(jerr));
 	}
-	return finish(root, out, err, errlen);
+	return finish(root, NULL, out, err, errlen);
 }
 
 int grime_config_load(const char *path, grime_config *out, char *err, size_t errlen)
@@ -198,7 +199,7 @@ int grime_config_load(const char *path, grime_config *out, char *err, size_t err
 		memset(out, 0, sizeof *out);
 		return fail(err, errlen, path, "%s", json_util_get_last_err());
 	}
-	return finish(root, out, err, errlen);
+	return finish(root, path, out, err, errlen);
 }
 
 void grime_config_free(grime_config *cfg)

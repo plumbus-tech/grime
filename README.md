@@ -12,6 +12,8 @@ command, hit an HTTP API to toggle your lights, reload, quit.
 - Sticky layers you toggle on and off — a second layout, or an override mode that
   outranks whatever app has focus.
 - No clocks anywhere: the keymap is driven purely by press and release.
+- No layouts baked in: QWERTY and Dvorak are JSON files under `configs/layouts/`,
+  and so is yours.
 - Fully async: one epoll loop; commands and HTTP calls never stall typing.
 
 Linux first (evdev + uinput); the engine is OS-agnostic so other backends can follow.
@@ -28,7 +30,8 @@ scripts/grime-try.sh configs/examples/weird-modifiers.json --timeout 120
 **Get out:** hold `Esc` + `Backspace` for 1 second. The try script also
 auto-exits after 60 s by default (`--timeout 0` to disable).
 
-In `configs/default.json` (53 lines — `"base": "qwerty"` covers normal typing), plus
+In `configs/default.json` (44 lines — it includes `layouts/qwerty.json` for
+normal typing), plus
 - `capslock` tap → Esc; hold `capslock` + `h j k l` → arrows, `+u` → Ctrl-Z,
   `+t` → notification, `+y` → types text, `+r` → reload config, `+q` → quit
 - `capslock o` → turn override mode on/off: `ctrl+f` opens Firefox and `ctrl+t` sends a

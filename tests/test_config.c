@@ -1,4 +1,6 @@
 /* Front-end tests: the friendly syntax, checked by what the engine then does. */
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "grime/config.h"
@@ -79,20 +81,34 @@ static bool fails(const char *json, const char *needle)
 	return strstr(err, needle) != NULL;
 }
 
-TEST(base_qwerty_types_without_being_asked)
+/* Layouts are config, not code, so the tests carry their own little one. */
+#define QWERTY                                                                                 \
+	"\"qwerty\": {"                                                                          \
+	"  \"a\":\"a\", \"b\":\"b\", \"c\":\"c\", \"f\":\"f\", \"h\":\"h\", \"j\":\"j\", \"k\":\"k\"," \
+	"  \"l\":\"l\", \"q\":\"q\", \"s\":\"s\", \"t\":\"t\", \"x\":\"x\", \"z\":\"z\", \"5\":\"5\"," \
+	"  \"esc\":\"esc\", \"tab\":\"tab\", \"space\":\"space\", \"capslock\":\"capslock\","       \
+	"  \"leftshift\":\"leftshift\", \"leftctrl\":\"leftctrl\", \"rightctrl\":\"rightctrl\","    \
+	"  \"rightalt\":\"rightalt\", \"f1\":\"f1\", \"f12\":\"f12\", \"f13\":\"f13\","             \
+	"  \"up\":\"up\", \"down\":\"down\", \"left\":\"left\", \"right\":\"right\"}"
+
+#define BASE "\"layers\": {" QWERTY "}, \"base\": \"qwerty\","
+
+TEST(base_fills_in_what_the_keymap_did_not_say)
 {
-	CHECK(emits("{\"base\": \"qwerty\", \"keymap\": {}}", "+a -a +5 -5", "+a -a +5 -5"));
+	CHECK(emits("{" BASE "\"keymap\": {}}", "+a -a +5 -5", "+a -a +5 -5"));
 	/* what the config does say wins over the base */
-	CHECK(emits("{\"base\": \"qwerty\", \"keymap\": {\"a\": \"b\"}}", "+a -a", "+b -b"));
+	CHECK(emits("{" BASE "\"keymap\": {\"a\": \"b\"}}", "+a -a", "+b -b"));
 	/* and null takes a key back out */
-	CHECK(emits("{\"base\": \"qwerty\", \"keymap\": {\"a\": null}}", "+a -a +b -b", "+b -b"));
+	CHECK(emits("{" BASE "\"keymap\": {\"a\": null}}", "+a -a +b -b", "+b -b"));
 	/* without a base, nothing is bound */
 	CHECK(emits("{\"keymap\": {}}", "+a -a", ""));
+	/* a base has to be a layer somebody defined */
+	CHECK(fails("{\"base\": \"qwerty\", \"keymap\": {}}", "include the layout"));
 }
 
 TEST(tap_and_hold_are_one_key)
 {
-	static const char *cfg = "{\"base\": \"qwerty\", \"keymap\": {"
+	static const char *cfg = "{" BASE "\"keymap\": {"
 				 "  \"capslock\": {\"tap\": \"esc\", \"hold\": {\"h\": \"left\"}}}}";
 	CHECK(emits(cfg, "+capslock -capslock", "+esc -esc"));
 	CHECK(emits(cfg, "+capslock +h -h -capslock", "+left -left"));
@@ -102,7 +118,7 @@ TEST(tap_and_hold_are_one_key)
 
 TEST(a_chord_binds_both_sides_of_the_modifier)
 {
-	static const char *cfg = "{\"base\": \"qwerty\", \"keymap\": {"
+	static const char *cfg = "{" BASE "\"keymap\": {"
 				 "  \"ctrl+f\": {\"do\": \"tap\", \"key\": \"f1\"}}}";
 	CHECK(emits(cfg, "+leftctrl +f -f -leftctrl", "+leftctrl +f1 -f1 -leftctrl"));
 	CHECK(emits(cfg, "+rightctrl +f -f -rightctrl", "+rightctrl +f1 -f1 -rightctrl"));
@@ -112,7 +128,7 @@ TEST(a_chord_binds_both_sides_of_the_modifier)
 
 TEST(key_paths_with_a_shared_prefix_merge)
 {
-	static const char *cfg = "{\"base\": \"qwerty\", \"keymap\": {"
+	static const char *cfg = "{" BASE "\"keymap\": {"
 				 "  \"rightalt x f\": {\"do\": \"type\", \"text\": \"F\"},"
 				 "  \"rightalt x t\": {\"do\": \"type\", \"text\": \"T\"},"
 				 "  \"rightalt l\":   {\"do\": \"type\", \"text\": \"L\"}}}";
@@ -126,7 +142,7 @@ TEST(key_paths_with_a_shared_prefix_merge)
 TEST(a_held_key_does_not_cancel_a_prefix)
 {
 	/* shift is held across the whole chord; releasing it must not end the prefix */
-	static const char *cfg = "{\"base\": \"qwerty\", \"keymap\": {"
+	static const char *cfg = "{" BASE "\"keymap\": {"
 				 "  \"rightalt x f\": {\"do\": \"type\", \"text\": \"F\"}}}";
 	CHECK(emits(cfg, "+leftshift +rightalt -rightalt -leftshift +x -x +f -f",
 		    "+leftshift -leftshift +leftshift +f -f -leftshift"));
@@ -135,7 +151,7 @@ TEST(a_held_key_does_not_cancel_a_prefix)
 TEST(a_hold_layer_outlives_a_layer_released_beneath_it)
 {
 	static const char *cfg =
-		"{\"base\": \"qwerty\", \"keymap\": {"
+		"{" BASE "\"keymap\": {"
 		"  \"space\": {\"pass\": true, \"hold\": {\"j\": \"down\"}},"
 		"  \"tab\":   {\"pass\": true, \"hold\": {\"f\": {\"do\": \"tap\", \"key\": \"f1\"}}}}}";
 	/* tab is still held when space is released, so tab's layer is still live */
@@ -145,8 +161,9 @@ TEST(a_hold_layer_outlives_a_layer_released_beneath_it)
 
 TEST(named_layers_can_be_reused)
 {
-	static const char *cfg = "{\"base\": \"qwerty\","
-				 " \"layers\": {\"nav\": {\"j\": \"down\", \"k\": \"up\"}},"
+	static const char *cfg = "{\"layers\": {" QWERTY ","
+				 "   \"nav\": {\"j\": \"down\", \"k\": \"up\"}},"
+				 " \"base\": \"qwerty\","
 				 " \"keymap\": {"
 				 "   \"capslock\": {\"hold\": \"nav\"},"
 				 "   \"f13\":      {\"toggle\": \"nav\", \"pass\": true}}}";
@@ -160,11 +177,52 @@ TEST(named_layers_can_be_reused)
 TEST(chord_shorthand_holds_its_modifiers)
 {
 	/* "ctrl+z" as a value behaves like the real chord: mods down first, up last */
-	CHECK(emits("{\"base\": \"qwerty\", \"keymap\": {\"f13\": \"ctrl+z\"}}", "+f13 -f13",
+	CHECK(emits("{" BASE "\"keymap\": {\"f13\": \"ctrl+z\"}}", "+f13 -f13",
 		    "+leftctrl +z -z -leftctrl"));
 	/* in an action slot it is a single moment instead */
-	CHECK(emits("{\"base\": \"qwerty\", \"keymap\": {\"f13\": {\"tap\": \"ctrl+z\"}}}",
+	CHECK(emits("{" BASE "\"keymap\": {\"f13\": {\"tap\": \"ctrl+z\"}}}",
 		    "+f13 -f13", "+leftctrl +z -z -leftctrl"));
+}
+
+static void write_file(const char *path, const char *text)
+{
+	FILE *f = fopen(path, "w");
+	fputs(text, f);
+	fclose(f);
+}
+
+TEST(include_pulls_in_layouts_from_other_files)
+{
+	const char *dir = getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp";
+	char layout[512], main_cfg[512], text[2048];
+	snprintf(layout, sizeof layout, "%s/grime-test-layout.json", dir);
+	snprintf(main_cfg, sizeof main_cfg, "%s/grime-test-main.json", dir);
+	write_file(layout, "{\"layers\": {" QWERTY ", \"swap\": {\"a\": \"b\"}}}");
+	snprintf(text, sizeof text,
+		 "{\"include\": [\"%s\"], \"base\": \"qwerty\","
+		 " \"keymap\": {\"f13\": {\"toggle\": \"swap\", \"pass\": true}}}",
+		 layout);
+	write_file(main_cfg, text);
+
+	grime_config cfg;
+	char err[512] = "";
+	bool ok = grime_config_load(main_cfg, &cfg, err, sizeof err) == 0;
+	if (!ok)
+		fprintf(stderr, "  config error: %s\n", err);
+	CHECK(ok);
+	if (ok) {
+		rt = (grime_runtime){.loop = loop, .out = &rec_out, .quit = rt_quit,
+				     .reload = rt_reload};
+		grime_engine *e = grime_engine_new(&rt, cfg.keymap);
+		cfg.keymap = NULL;
+		grime_config_free(&cfg);
+		rec[0] = 0;
+		feed(e, "+a -a +f13 -f13 +a -a");
+		CHECK(!strcmp(rec, "+a -a +b -b"));
+		grime_engine_free(e);
+	}
+	remove(layout);
+	remove(main_cfg);
 }
 
 TEST(the_front_end_rejects_nonsense)
@@ -184,7 +242,9 @@ TEST(the_front_end_rejects_nonsense)
 		    " \"keymap\": {\"b\": {\"hold\": \"x\"}}}",
 		    "contains itself"));
 	CHECK(fails("{\"keymap\": {\"a\": \"a\"}, \"colour\": \"red\"}", "unknown \"colour\""));
-	CHECK(fails("{\"base\": \"dvorak\", \"keymap\": {}}", "only base is \"qwerty\""));
+	CHECK(fails("{\"base\": 5, \"keymap\": {}}", "name of a layer"));
+	CHECK(fails("{\"keymap\": {}, \"include\": \"x.json\"}", "array of file paths"));
+	CHECK(fails("{\"keymap\": {}, \"include\": [\"/nope/missing.json\"]}", "missing.json"));
 	/* a path step that collides with a plain binding */
 	CHECK(fails("{\"keymap\": {\"a\": \"a\", \"a b\": {\"do\": \"quit\"}}}", "already bound"));
 }
@@ -193,7 +253,7 @@ int main(void)
 {
 	grime_log_level = GRIME_LOG_ERROR;
 	loop = grime_loop_new();
-	RUN(base_qwerty_types_without_being_asked);
+	RUN(base_fills_in_what_the_keymap_did_not_say);
 	RUN(tap_and_hold_are_one_key);
 	RUN(a_chord_binds_both_sides_of_the_modifier);
 	RUN(key_paths_with_a_shared_prefix_merge);
@@ -201,6 +261,7 @@ int main(void)
 	RUN(a_hold_layer_outlives_a_layer_released_beneath_it);
 	RUN(named_layers_can_be_reused);
 	RUN(chord_shorthand_holds_its_modifiers);
+	RUN(include_pulls_in_layouts_from_other_files);
 	RUN(the_front_end_rejects_nonsense);
 	grime_loop_free(loop);
 	return DONE();

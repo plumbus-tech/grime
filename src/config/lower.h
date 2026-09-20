@@ -15,7 +15,8 @@
 #include <stddef.h>
 
 /* Returns a new root object (caller json_object_put()s it), or NULL with err
- * set. `root` is left untouched. */
-json_object *grime_config_lower(json_object *root, char *err, size_t errlen);
+ * set. `root` is left untouched. `path` is the file it came from, which is what
+ * relative "include" paths resolve against; NULL means the current directory. */
+json_object *grime_config_lower(json_object *root, const char *path, char *err, size_t errlen);
 
 #endif

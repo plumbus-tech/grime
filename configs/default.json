@@ -1,5 +1,7 @@
 {
   "devices": ["auto"],
+
+  "include": ["layouts/qwerty.json", "layouts/dvorak.json"],
   "base": "qwerty",
 
   "keymap": {
@@ -37,17 +39,6 @@
     "override": {
       "ctrl+f": { "do": "exec", "cmd": "firefox" },
       "ctrl+t": { "do": "exec", "argv": ["notify-send", "grime", "ctrl+t taken over by grime"] }
-    },
-
-    "dvorak": {
-      "minus": "leftbrace", "equal": "rightbrace",
-      "q": "apostrophe", "w": "comma", "e": "dot", "r": "p", "t": "y",
-      "y": "f", "u": "g", "i": "c", "o": "r", "p": "l",
-      "leftbrace": "slash", "rightbrace": "equal",
-      "s": "o", "d": "e", "f": "u", "g": "i", "h": "d",
-      "j": "h", "k": "t", "l": "n", "semicolon": "s", "apostrophe": "minus",
-      "z": "semicolon", "x": "q", "c": "j", "v": "k", "b": "x",
-      "n": "b", "comma": "w", "dot": "v", "slash": "z"
     }
   }
 }

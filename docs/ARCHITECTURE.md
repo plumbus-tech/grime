@@ -37,10 +37,17 @@ things (processes, HTTP) are fds/timers on the loop.
 | `config.h`   | JSON → tree | `src/config/lower.c` (syntax) + `config.c` (tree) |
 | `keynames.h` | `"capslock"` ↔ 58 | `src/engine/keynames.c` (+ generated `keynames_table.inc`) |
 
-**Config in two steps:** `lower.c` rewrites the friendly syntax (slots, key
-paths, chords, named layers, `"base": "qwerty"`) into one canonical shape, and
-`config.c` turns only that into the tree. So the sugar can never mean something
-the tree can't say, and `grime --expand` shows you the result.
+**Config in two steps:** `lower.c` reads the includes, then rewrites the
+friendly syntax (slots, key paths, chords, named layers, `base`) into one
+canonical shape; `config.c` turns only that into the tree. So the sugar can
+never mean something the tree can't say, and `grime --expand` shows you the
+result.
+
+**No layouts in the code.** QWERTY and Dvorak are layers in
+`configs/layouts/*.json`; `"base": "<layer>"` seeds the root from one of them.
+The one remaining layout assumption is `src/actions/act_type.c`, whose ASCII →
+keycode table is US QWERTY — that is about the layout the *OS* applies to what
+grime emits, not about grime's own keymap.
 
 **Engine purity:** `src/engine` and `src/config` never include Linux headers,
 so they're unit-tested with a recording output (`tests/test_engine.c`) and will

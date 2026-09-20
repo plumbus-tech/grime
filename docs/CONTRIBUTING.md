@@ -33,5 +33,7 @@ Lane B
   `tap`. Needs `grime_binding.alone` to become a tri-state, so: contract PR first.
 - Chords in non-final path steps (`"ctrl+x ctrl+f"`), which `lower.c` rejects today.
 - Event-only fix for home-row-mod rolls (e.g. resolve by release order), keeping the keymap free of timers.
-- `"include"` of other JSON files; more layouts as named layers.
+- More layouts under `configs/layouts/` (colemak, workman, azerty…).
+- Make `type` layout-agnostic: `act_type.c` maps ASCII to keycodes assuming the
+  OS is on US QWERTY. It should take the table from config like everything else.
 - More engine tests (deep nesting, reload while keys held).

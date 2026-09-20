@@ -8,6 +8,7 @@ Validate with `grime --check -c PATH`. See what it really means with
 ```json
 {
   "devices": ["auto"],
+  "include": ["layouts/qwerty.json"],
   "base": "qwerty",
   "keymap": { ... },
   "layers": { ... }
@@ -16,11 +17,16 @@ Validate with `grime --check -c PATH`. See what it really means with
 
 - `devices` — `["auto"]` (every keyboard-looking device, the default) or explicit
   paths like `"/dev/input/by-id/usb-Keychron-event-kbd"`.
-- `base` — `"qwerty"` makes every key on a normal keyboard type itself unless
-  your keymap says otherwise. Without it, **a key you don't mention does
-  nothing**, which is occasionally what you want and usually not.
+- `include` — other JSON files to pull `layers` and `keymap` entries from.
+- `base` — the name of a layer to fill in with: every key in it types itself
+  unless your keymap says otherwise. Without a base, **a key you don't mention
+  does nothing**, which is occasionally what you want and usually not.
 - `keymap` — the root of the tree.
 - `layers` — keymaps with names, so you can use one in more than one place.
+
+grime knows nothing about keyboard layouts. QWERTY is a layer in
+`configs/layouts/qwerty.json`, Dvorak is a layer in `configs/layouts/dvorak.json`,
+and both are plain config you can read and edit.
 
 ## The model
 
@@ -102,6 +108,30 @@ An **action** is `{"do": "...", ...}`, or a string: `"esc"` taps that key,
 5. There is no notion of time anywhere in the keymap.
 
 `grime --expand` prints the tree these rules actually run on.
+
+## Several files
+
+`include` takes paths, resolved against the directory of the file that names
+them (absolute and `~/` work too). Each included file may have `include`,
+`layers` and `keymap`; only the main config sets `devices` and `base`.
+
+```json
+"include": ["layouts/qwerty.json", "layouts/dvorak.json", "~/.config/grime/work.json"]
+```
+
+**The first definition wins**, and your own file counts first — so a `keymap`
+entry or a `layer` you write yourself overrides one you pulled in, and among
+includes the earlier one wins. Including the same file twice is harmless.
+
+This is how layouts work: `configs/layouts/qwerty.json` is nothing but
+
+```json
+{ "layers": { "qwerty": { "a": "a", "b": "b", ... } } }
+```
+
+so `"base": "qwerty"` is just "seed the root with that layer". Write your own
+layout the same way, point `base` at it, and grime never has to know it exists.
+`scripts/gen-qwerty.py` regenerates the QWERTY one.
 
 ## Actions
 

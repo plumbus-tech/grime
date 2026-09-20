@@ -8,18 +8,23 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "grime/keynames.h"
 
 #define MAX_LAYER_DEPTH 16
+#define MAX_INCLUDES 64
+#define MAX_PATH 1024
 #define MAX_MODS 4
 #define MAX_STEPS 8
 
 struct ctx {
-	json_object *layers;                 /* the "layers" table, or NULL */
-	const char *open[MAX_LAYER_DEPTH];   /* layer names being expanded, for cycles */
+	json_object *layers;               /* every layer, this file's and its includes' */
+	const char *open[MAX_LAYER_DEPTH]; /* layer names being expanded, for cycles */
 	int nopen;
+	char included[MAX_INCLUDES][MAX_PATH]; /* files already pulled in, for cycles */
+	int nincluded;
 	char *err;
 	size_t errlen;
 };
@@ -520,74 +525,191 @@ static json_object *lower_keymap(struct ctx *c, json_object *in, const char *pat
 
 /* ---- the root ---- */
 
-static int seed_qwerty(struct ctx *c, json_object *km)
+/* "base": "<layer>" fills in every key the keymap didn't mention itself. The
+ * layer is an ordinary one from "layers", so layouts are config, not code. */
+static int seed_from(struct ctx *c, json_object *km, json_object *layer, const char *name)
 {
-	static const char *const names[] = {
-#include "qwerty_base.inc"
-	};
-	for (size_t i = 0; i < sizeof names / sizeof *names; i++) {
-		const char *k = canon(names[i]);
+	char path[256];
+	snprintf(path, sizeof path, "layers.%s", name);
+	if (!json_object_is_type(layer, json_type_object))
+		return fail(c, path, "expected an object of key names");
+	json_object_object_foreach(layer, key, val)
+	{
+		if (strpbrk(key, " +"))
+			return fail(c, path,
+				    "a base layer holds plain key names, but \"%s\" is a path "
+				    "or a chord",
+				    key);
+		const char *k = canon(key);
 		if (!k)
-			return fail(c, "base", "qwerty_base.inc has an unknown key \"%s\"", names[i]);
+			return fail(c, path, "unknown key \"%s\" (see grime --list-keys)", key);
 		if (obj_get(km, k))
-			continue; /* the config said something about this key */
-		json_object *e = json_object_new_object();
-		json_object_object_add(e, "press", key_action("press", k));
-		json_object_object_add(e, "release", key_action("release", k));
-		json_object_object_add(km, k, e);
+			continue; /* the keymap already said what this key does */
+		json_object *entry = json_object_new_object();
+		int rc = lower_entry(c, val, path, entry);
+		if (rc == 0)
+			rc = place_leaf(c, km, k, entry, path);
+		json_object_put(entry);
+		if (rc < 0)
+			return -1;
 	}
 	return 0;
 }
 
-json_object *grime_config_lower(json_object *root, char *err, size_t errlen)
+/* ---- include: one config out of several files ---- */
+
+/* `rel` against the directory of the file that named it. */
+static int resolve_path(const char *dir, const char *rel, char *out, size_t outlen)
+{
+	const char *home = getenv("HOME");
+	int n;
+	if (rel[0] == '/')
+		n = snprintf(out, outlen, "%s", rel);
+	else if (rel[0] == '~' && rel[1] == '/' && home)
+		n = snprintf(out, outlen, "%s/%s", home, rel + 2);
+	else
+		n = snprintf(out, outlen, "%s/%s", dir, rel);
+	return (n < 0 || (size_t)n >= outlen) ? -1 : 0;
+}
+
+static void dir_of(const char *path, char *out, size_t outlen)
+{
+	const char *slash = path ? strrchr(path, '/') : NULL;
+	if (!slash) {
+		snprintf(out, outlen, ".");
+		return;
+	}
+	size_t n = (size_t)(slash - path);
+	if (n >= outlen)
+		n = outlen - 1;
+	memcpy(out, path, n);
+	out[n] = 0;
+}
+
+/* Copies `src`'s entries into `dst`, keeping whoever got there first. */
+static void merge_into(json_object *dst, json_object *src)
+{
+	json_object_object_foreach(src, k, v)
+		if (!obj_get(dst, k))
+			json_object_object_add(dst, k, json_object_get(v));
+}
+
+/* Walks a config file and everything it includes, collecting layers and keymap
+ * entries. The file you are reading wins over the files it pulls in. */
+static int gather(struct ctx *c, json_object *file, const char *dir, json_object *layers,
+		  json_object *keymap, const char *path, bool is_root)
+{
+	json_object *v;
+	if (!is_root && (obj_get(file, "devices") || obj_get(file, "base")))
+		return fail(c, path, "only the main config can set \"devices\" or \"base\"");
+	json_object_object_foreach(file, k, unused)
+	{
+		(void)unused;
+		if (strcmp(k, "devices") && strcmp(k, "keymap") && strcmp(k, "base") &&
+		    strcmp(k, "layers") && strcmp(k, "include"))
+			return fail(c, path,
+				    "unknown \"%s\" (expected devices, base, include, layers "
+				    "or keymap)",
+				    k);
+	}
+	if ((v = obj_get(file, "layers"))) {
+		if (!json_object_is_type(v, json_type_object))
+			return fail(c, path, "\"layers\": expected an object of named keymaps");
+		merge_into(layers, v);
+	}
+	if ((v = obj_get(file, "keymap"))) {
+		if (!json_object_is_type(v, json_type_object))
+			return fail(c, path, "\"keymap\": expected an object of key names");
+		merge_into(keymap, v);
+	}
+	if (!(v = obj_get(file, "include")))
+		return 0;
+	if (!json_object_is_type(v, json_type_array))
+		return fail(c, path, "\"include\": expected an array of file paths");
+
+	for (size_t i = 0; i < json_object_array_length(v); i++) {
+		const char *rel = str_of(json_object_array_get_idx(v, i));
+		if (!rel)
+			return fail(c, path, "\"include\": expected an array of file paths");
+		char full[MAX_PATH];
+		if (resolve_path(dir, rel, full, sizeof full) < 0)
+			return fail(c, path, "include \"%s\": path too long", rel);
+		bool seen = false;
+		for (int j = 0; j < c->nincluded; j++)
+			seen = seen || !strcmp(c->included[j], full);
+		if (seen)
+			continue; /* already pulled in, by us or by someone else */
+		if (c->nincluded == MAX_INCLUDES)
+			return fail(c, path, "more than %d includes", MAX_INCLUDES);
+		snprintf(c->included[c->nincluded++], MAX_PATH, "%s", full);
+
+		json_object *sub = json_object_from_file(full);
+		if (!sub)
+			return fail(c, path, "include \"%s\": %s", rel, json_util_get_last_err());
+		if (!json_object_is_type(sub, json_type_object)) {
+			json_object_put(sub);
+			return fail(c, full, "expected a JSON object");
+		}
+		char subdir[MAX_PATH];
+		dir_of(full, subdir, sizeof subdir);
+		int rc = gather(c, sub, subdir, layers, keymap, full, false);
+		json_object_put(sub); /* merged entries hold their own references */
+		if (rc < 0)
+			return -1;
+	}
+	return 0;
+}
+
+json_object *grime_config_lower(json_object *root, const char *path, char *err, size_t errlen)
 {
 	struct ctx c = {.err = err, .errlen = errlen};
 	if (!json_object_is_type(root, json_type_object)) {
 		fail(&c, "config", "expected a JSON object");
 		return NULL;
 	}
-	json_object_object_foreach(root, k, unused)
-	{
-		(void)unused;
-		if (strcmp(k, "devices") && strcmp(k, "keymap") && strcmp(k, "base") &&
-		    strcmp(k, "layers")) {
-			fail(&c, "config", "unknown \"%s\" (expected devices, base, layers or keymap)",
-			     k);
-			return NULL;
-		}
-	}
-	c.layers = obj_get(root, "layers");
-	if (c.layers && !json_object_is_type(c.layers, json_type_object)) {
-		fail(&c, "layers", "expected an object of named keymaps");
-		return NULL;
-	}
-	json_object *km = obj_get(root, "keymap");
-	if (!km) {
+	char dir[MAX_PATH];
+	dir_of(path, dir, sizeof dir);
+
+	json_object *layers = json_object_new_object(), *keymap = json_object_new_object();
+	json_object *out = NULL, *out_km = NULL;
+	if (gather(&c, root, dir, layers, keymap, path ? path : "config", true) < 0)
+		goto done;
+	if (!obj_get(root, "keymap")) {
 		fail(&c, "config", "missing \"keymap\"");
-		return NULL;
+		goto done;
 	}
-	json_object *out_km = lower_keymap(&c, km, "keymap");
-	if (!out_km)
-		return NULL;
+	c.layers = layers;
+	if (!(out_km = lower_keymap(&c, keymap, "keymap")))
+		goto done;
 
 	json_object *base = obj_get(root, "base");
 	if (base) {
 		const char *b = str_of(base);
-		if (!b || strcmp(b, "qwerty")) {
-			fail(&c, "base", "the only base is \"qwerty\"");
-			json_object_put(out_km);
-			return NULL;
+		json_object *layer = b ? obj_get(layers, b) : NULL;
+		if (!b) {
+			fail(&c, "base", "expected the name of a layer, like \"qwerty\"");
+			goto done;
 		}
-		if (seed_qwerty(&c, out_km) < 0) {
-			json_object_put(out_km);
-			return NULL;
+		if (!layer) {
+			fail(&c, "base",
+			     "no layer named \"%s\" -- include the layout that defines it, "
+			     "e.g. \"include\": [\"layouts/%s.json\"]",
+			     b, b);
+			goto done;
 		}
+		if (seed_from(&c, out_km, layer, b) < 0)
+			goto done;
 	}
 
-	json_object *out = json_object_new_object();
+	out = json_object_new_object();
 	json_object *dev = obj_get(root, "devices");
 	if (dev)
 		json_object_object_add(out, "devices", json_object_get(dev));
 	json_object_object_add(out, "keymap", out_km);
+	out_km = NULL;
+done:
+	json_object_put(out_km);
+	json_object_put(layers);
+	json_object_put(keymap);
 	return out;
 }
