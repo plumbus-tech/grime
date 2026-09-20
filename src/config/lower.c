@@ -22,8 +22,10 @@
 struct ctx {
 	json_object *layers;               /* every layer, this file's and its includes' */
 	json_object *keymap;               /* the merged keymap, before lowering */
-	const char *open[MAX_LAYER_DEPTH]; /* layer names being expanded, for cycles */
+	const char *open[MAX_LAYER_DEPTH];   /* layer names being expanded, for cycles */
 	int nopen;
+	const char *standing[MAX_LAYER_DEPTH]; /* keys being stood in for, for cycles */
+	int nstanding;
 	char included[MAX_INCLUDES][MAX_PATH]; /* files already pulled in, for cycles */
 	int nincluded;
 	char *err;
@@ -215,6 +217,7 @@ static int check_retired(struct ctx *c, json_object *o, const char *path)
 }
 
 static json_object *lower_keymap(struct ctx *c, json_object *in, const char *path);
+static int lower_entry(struct ctx *c, json_object *val, const char *path, json_object *entry);
 
 /* An action slot: "esc", "ctrl+z", or {"do": …}. Always returns a fresh object. */
 static json_object *lower_action(struct ctx *c, json_object *v, const char *path)
@@ -299,15 +302,42 @@ static json_object *raw_layer(struct ctx *c, json_object *v, const char *path)
 	return l ? l : borrow_layer(c, s, path);
 }
 
-/* "capslock" is the keymap capslock opens; "tab.c" the one tab-then-c opens. */
-static json_object *borrow_layer(struct ctx *c, const char *ref, const char *path)
+
+/* The entry a reference names -- "capslock", or "tab.c" for a key inside the
+ * layer tab opens. Returns NULL without complaining if there is no such key. */
+static json_object *find_entry_path(struct ctx *c, const char *ref)
 {
 	char buf[256];
-	if (strlen(ref) >= sizeof buf) {
-		fail(c, path, "reference too long");
+	if (strlen(ref) >= sizeof buf)
 		return NULL;
-	}
 	strcpy(buf, ref);
+
+	char *steps[MAX_STEPS];
+	int n = 0;
+	for (char *t = strtok(buf, "."); t; t = strtok(NULL, ".")) {
+		if (n == MAX_STEPS)
+			return NULL;
+		steps[n++] = t;
+	}
+
+	json_object *km = c->keymap, *entry = NULL;
+	for (int i = 0; i < n; i++) {
+		if (!km || !(entry = find_entry(km, steps[i])))
+			return NULL;
+		if (i + 1 == n)
+			return entry;
+		json_object *layer = layer_slot_of(entry);
+		if (!layer || c->nopen == MAX_LAYER_DEPTH)
+			return NULL;
+		c->open[c->nopen++] = ref; /* guard the mutual recursion below */
+		km = raw_layer(c, layer, "config");
+		c->nopen--;
+	}
+	return entry;
+}
+
+static json_object *borrow_layer(struct ctx *c, const char *ref, const char *path)
+{
 	for (int i = 0; i < c->nopen; i++)
 		if (!strcmp(c->open[i], ref)) {
 			fail(c, path, "layer \"%s\" contains itself", ref);
@@ -317,27 +347,20 @@ static json_object *borrow_layer(struct ctx *c, const char *ref, const char *pat
 		fail(c, path, "layer references nested deeper than %d", MAX_LAYER_DEPTH);
 		return NULL;
 	}
-	json_object *km = c->keymap, *layer = NULL;
-	for (char *step = strtok(buf, "."); step; step = strtok(NULL, ".")) {
-		json_object *entry = find_entry(km, step);
-		if (!entry) {
-			fail(c, path,
-			     "\"%s\": no layer by that name, and no key \"%s\" to borrow from",
-			     ref, step);
-			return NULL;
-		}
-		layer = layer_slot_of(entry);
-		if (!layer) {
-			fail(c, path, "\"%s\": \"%s\" has no layer to borrow", ref, step);
-			return NULL;
-		}
-		c->open[c->nopen++] = ref; /* guard the mutual recursion below */
-		km = raw_layer(c, layer, path);
-		c->nopen--;
-		if (!km)
-			return NULL;
+	json_object *entry = find_entry_path(c, ref);
+	if (!entry) {
+		fail(c, path, "\"%s\": no layer by that name, and no key to borrow from", ref);
+		return NULL;
 	}
-	return layer;
+	json_object *layer = layer_slot_of(entry);
+	if (!layer) {
+		fail(c, path, "\"%s\" has no layer to borrow", ref);
+		return NULL;
+	}
+	c->open[c->nopen++] = ref; /* the borrowed layer may itself be a reference */
+	json_object *km = raw_layer(c, layer, path);
+	c->nopen--;
+	return km;
 }
 
 /* A layer slot: an inline keymap, a name from "layers", or a key to borrow from. */
@@ -374,7 +397,25 @@ static int lower_entry(struct ctx *c, json_object *val, const char *path, json_o
 		return 0; /* explicit null: this key does nothing */
 
 	const char *s = str_of(val);
-	if (s) { /* "a": "b" / "u": "ctrl+z" -- behave like that key, hold and all */
+	if (s) {
+		/* "c": "capslock" -- be that key: whatever it taps to, whatever layer
+		 * it opens. A key the keymap says nothing about is just itself, which
+		 * is what makes "a": "a" a plain letter and not a dead end. */
+		if (!strchr(s, '+') && c->nstanding < MAX_LAYER_DEPTH) {
+			bool looping = false;
+			for (int i = 0; i < c->nstanding; i++)
+				looping = looping || !strcmp(c->standing[i], s);
+			json_object *target = looping ? NULL : find_entry_path(c, s);
+			if (target) {
+				char sub[512];
+				snprintf(sub, sizeof sub, "%s -> %s", path, s);
+				c->standing[c->nstanding++] = s;
+				int rc = lower_entry(c, target, sub, entry);
+				c->nstanding--;
+				return rc;
+			}
+		}
+		/* "u": "ctrl+z" -- stand in for a key the keymap doesn't define */
 		char buf[128];
 		struct chord ch;
 		const char *bad = NULL;

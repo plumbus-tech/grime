@@ -96,37 +96,56 @@ home-row mod, and `{"toggle": …, "do": …}` announces itself as it flips.
 An **action** is `{"do": "...", ...}`, or a string: `"esc"` taps that key,
 `"ctrl+z"` taps that chord.
 
-## Borrowing a layer
+## Standing in for another key
 
-Wherever a keymap is expected you can write the name of a key instead, and you
-get the layer that key opens. So this:
+`"c": "capslock"` means **c is capslock** — not "c emits the capslock keycode",
+but "c does whatever capslock does". Tap it and you get capslock's tap; hold it
+and you are in capslock's layer:
 
 ```json
 "capslock": { "tap": "esc", "hold": { "h": "left", "j": "down" } },
-"tab": { "tap": "tab", "hold": {
-  "c": { "tap": "capslock", "hold": "capslock" }
-}}
+"tab": { "tap": "tab", "hold": { "c": "capslock" } }
 ```
 
-reads the way you'd say it: **tapping `tab c` is a capslock tap, holding it is a
-capslock hold.** Let go and you get the capslock key; keep holding and
-`h`/`j` are arrows, because `c` is standing in the same layer capslock does.
+```
+tab c, released     ->  Esc          (capslock's tap)
+tab c, held + h     ->  Left         (capslock's layer)
+```
 
-The two halves are independent on purpose. `tab c` tapped sends **capslock**
-even though capslock itself taps to Esc — you are borrowing the layer, not
-impersonating the key.
+You never say "tap" and "hold" twice. Which one applies is decided by what you
+actually did: let go without touching anything else and it was a tap; press
+something else first and it was a hold. That is the same `alone` rule every
+other release uses.
 
-- `"hold": "capslock"` takes whichever layer capslock opens, whatever slot it
-  used. `"toggle": "capslock"` takes that same layer and makes it sticky
-  instead, so one layer can have different lifetimes in different places.
-- `"hold": "tab.c"` reaches further down: the layer `tab` then `c` opens. Keys
-  written as paths or chords (`"rightalt x f"`) aren't addressable this way —
-  write them nested if you want to borrow from them.
-- Order doesn't matter; a key can borrow from one defined later in the file.
-- A layer that ends up containing itself is a config error, not a hang.
+**A key the keymap says nothing about is just itself.** `"a": "a"` presses `a`
+on press and releases it on release, because the keymap has no entry for `a`
+to stand in for — and that matters: if it waited for the release to decide,
+rolling `a` into `s` quickly would swallow the `a` and holding `a` would never
+autorepeat. Only a key that opens something can be tap-or-hold, because only
+then is there anything to wait for.
 
-Naming a layer in `layers` is still the better move when two keys share a
-*concept*. Borrowing is for when one key genuinely stands in for another.
+The flip side is worth knowing: if you later give `a` a layer, every
+`"x": "a"` in your config starts standing in for that layer too. `grime --expand`
+shows you what you really have.
+
+### Borrowing just the layer
+
+The layer slots also take a key name, for when you want a key's layer but not
+the key:
+
+```json
+"f13": { "toggle": "capslock", "pass": true }
+```
+
+That is capslock's layer made **sticky** instead of held — one layer, two
+lifetimes. `"hold": "tab.c"` reaches further down, to the layer `tab` then `c`
+opens. Keys written as paths or chords (`"rightalt x f"`) aren't addressable
+this way; write them nested if you want to borrow from them.
+
+Order never matters, and a layer that ends up containing itself is a config
+error rather than a hang. Naming a layer in `layers` is still the better move
+when two keys share a *concept*; standing in is for when one key really is
+another.
 
 ## How the walk works
 

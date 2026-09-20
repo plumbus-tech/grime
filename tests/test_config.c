@@ -174,29 +174,48 @@ TEST(named_layers_can_be_reused)
 		    "+down -down +j -j"));
 }
 
-TEST(a_layer_can_be_borrowed_from_the_key_that_opens_it)
+TEST(a_key_can_stand_in_for_another_key)
 {
-	/* tapping c is a capslock tap; holding c is a capslock hold */
+	/* "c": "capslock" means c *is* capslock: its tap and its layer both */
 	static const char *cfg =
 		"{" BASE "\"keymap\": {"
 		"  \"capslock\": {\"tap\": \"esc\", \"hold\": {\"h\": \"left\", \"j\": \"down\"}},"
-		"  \"tab\": {\"tap\": \"tab\", \"hold\": {"
-		"    \"c\": {\"tap\": \"capslock\", \"hold\": \"capslock\"}}}}}";
-	CHECK(emits(cfg, "+tab +c -c -tab", "+capslock -capslock"));
+		"  \"tab\": {\"tap\": \"tab\", \"hold\": {\"c\": \"capslock\"}}}}";
+	CHECK(emits(cfg, "+tab +c -c -tab", "+esc -esc"));
 	CHECK(emits(cfg, "+tab +c +h -h +j -j -c -tab", "+left -left +down -down"));
-	/* the borrowed layer is the real one, so capslock itself still works */
+	/* the original still works, and so does tab's own tap */
 	CHECK(emits(cfg, "+capslock +h -h -capslock", "+left -left"));
-	/* and the key it was borrowed from can be written after it in the file */
+	CHECK(emits(cfg, "+tab -tab", "+tab -tab"));
+	/* order doesn't matter: stand in for a key defined later in the file */
 	CHECK(emits("{" BASE "\"keymap\": {"
-		    "  \"tab\": {\"hold\": {\"c\": {\"hold\": \"capslock\"}}},"
+		    "  \"tab\": {\"hold\": {\"c\": \"capslock\"}},"
 		    "  \"capslock\": {\"hold\": {\"h\": \"left\"}}}}",
 		    "+tab +c +h -h -c -tab", "+left -left"));
-	/* a borrowed layer can be given a different lifetime than the original */
+}
+
+TEST(a_plain_key_stays_a_plain_key)
+{
+	/* A key the keymap says nothing about is just itself, pressed on press.
+	 * If "a": "a" ever became tap-or-hold, rolling a into s would eat the a
+	 * and holding a would never autorepeat. */
+	CHECK(emits("{" BASE "\"keymap\": {\"a\": \"a\", \"s\": \"s\"}}", "+a +s -a -s",
+		    "+a +s -a -s"));
+	/* standing in for a key that has no layer is still a plain key */
+	CHECK(emits("{" BASE "\"keymap\": {\"a\": \"a\", \"f13\": \"a\"}}", "+f13 +s -f13 -s",
+		    "+a +s -a -s"));
+	/* and two keys pointing at each other resolve instead of hanging */
+	CHECK(emits("{" BASE "\"keymap\": {\"a\": \"b\", \"b\": \"a\"}}", "+a -a", "+b -b"));
+}
+
+TEST(a_borrowed_layer_can_be_given_a_new_lifetime)
+{
+	/* the layer slots still take a key name, for when you want the layer but
+	 * not the key -- here capslock's layer, made sticky instead of held */
 	CHECK(emits("{" BASE "\"keymap\": {"
 		    "  \"capslock\": {\"hold\": {\"h\": \"left\"}},"
 		    "  \"f13\": {\"toggle\": \"capslock\", \"pass\": true}}}",
 		    "+f13 -f13 +h -h +f13 -f13 +h -h", "+left -left +h -h"));
-	/* and you can reach a layer further down, through the keys that open it */
+	/* and a layer further down, through the keys that open it */
 	CHECK(emits("{" BASE "\"keymap\": {"
 		    "  \"tab\": {\"hold\": {\"c\": {\"hold\": {\"h\": \"left\"}}}},"
 		    "  \"f13\": {\"hold\": \"tab.c\"}}}",
@@ -292,7 +311,9 @@ int main(void)
 	RUN(a_held_key_does_not_cancel_a_prefix);
 	RUN(a_hold_layer_outlives_a_layer_released_beneath_it);
 	RUN(named_layers_can_be_reused);
-	RUN(a_layer_can_be_borrowed_from_the_key_that_opens_it);
+	RUN(a_key_can_stand_in_for_another_key);
+	RUN(a_plain_key_stays_a_plain_key);
+	RUN(a_borrowed_layer_can_be_given_a_new_lifetime);
 	RUN(chord_shorthand_holds_its_modifiers);
 	RUN(include_pulls_in_layouts_from_other_files);
 	RUN(the_front_end_rejects_nonsense);

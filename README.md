@@ -11,8 +11,8 @@ command, hit an HTTP API to toggle your lights, reload, quit.
 - Tap vs hold on one key: `{"tap": "esc", "hold": {...}}`.
 - Sticky layers you toggle on and off — a second layout, or an override mode that
   outranks whatever app has focus.
-- Layers are borrowable: `{"tap": "capslock", "hold": "capslock"}` means tapping
-  it sends capslock and holding it opens capslock's whole layer.
+- `"c": "capslock"` means c **is** capslock — tap it for capslock's tap, hold it
+  and you're in capslock's layer. Which one you meant is inferred from what you did.
 - No clocks anywhere: the keymap is driven purely by press and release.
 - No layouts baked in: QWERTY and Dvorak are JSON files under `configs/layouts/`,
   and so is yours.
@@ -40,8 +40,9 @@ normal typing), plus
   notification instead of reaching the app; every other ctrl chord passes through
 - `capslock d` → toggle Dvorak on and off, without touching your OS layout
 - `rightalt x t` → notification (Emacs-style prefix; any undefined key cancels it)
-- `tab` tap → Tab; hold `tab` + `f` → Firefox; `tab c` tapped → caps lock, or
-  keep `c` held and you're in the capslock layer (`hjkl` → arrows, and the rest)
+- `tab` tap → Tab; hold `tab` + `f` → Firefox; `tab c` **is** capslock — tap it
+  for Esc, or keep `c` held and you're in the capslock layer (`hjkl` → arrows,
+  `+u` → Ctrl-Z, `+d` → Dvorak, all of it)
 
 `scripts/setup-permissions.sh` (once, then re-login) lets you run without sudo.
 
