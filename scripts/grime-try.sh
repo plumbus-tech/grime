@@ -6,7 +6,8 @@
 #   scripts/grime-try.sh --dry-run               # don't grab the keyboard, just log
 #   scripts/grime-try.sh --timeout 0             # no auto-exit (you know what you're doing)
 #
-# Get out at any time: hold Esc + Backspace for 1 second, or Ctrl-C this terminal
+# Get out at any time: hold Esc + Backspace (or all three mouse buttons) for 1
+# second, or Ctrl-C this terminal
 # from another one (pkill grime).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -49,7 +50,7 @@ else
 
   grime is taking over your keyboard with $config
   keys that aren't in the keymap will do NOTHING.
-  emergency exit: hold Esc + Backspace for 1 second
+  emergency exit: hold Esc + Backspace, or all three mouse buttons, for 1 second
   $([ "$timeout" -gt 0 ] && echo "auto-exit in ${timeout}s")
 
 MSG

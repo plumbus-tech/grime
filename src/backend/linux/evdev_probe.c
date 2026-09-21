@@ -12,19 +12,12 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
+#include "grime/event.h"
 #include "grime/log.h"
 #include "grime/output.h"
 
 #define NBITS(x) (((x) + 8 * sizeof(long) - 1) / (8 * sizeof(long)))
 #define TEST_BIT(bit, arr) ((arr)[(bit) / (8 * sizeof(long))] >> ((bit) % (8 * sizeof(long))) & 1)
-
-/* Must agree with uinput_output.c: these are the codes that are buttons rather
- * than keys, and so don't count towards "this thing has keys on it". */
-static bool is_button(int code)
-{
-	return (code >= BTN_MISC && code < KEY_OK) || (code >= BTN_DPAD_UP && code <= BTN_GRIPR2) ||
-	       (code >= BTN_TRIGGER_HAPPY && code < KEY_MAX);
-}
 
 /* The full alphabet is what separates "the thing you type on" from a laptop's
  * hotkey block, which has real keys but no letters. */
@@ -39,7 +32,7 @@ static bool has_alphabet(const unsigned long *keys)
 static bool has_plain_keys(const unsigned long *keys)
 {
 	for (int k = 1; k < KEY_MAX; k++)
-		if (!is_button(k) && TEST_BIT(k, keys))
+		if (!grime_is_button(k) && TEST_BIT(k, keys))
 			return true;
 	return false;
 }

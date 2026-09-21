@@ -16,10 +16,16 @@ struct grime_output {
 	 * exactly. Types are evdev EV_* numbers on every platform, the same
 	 * convention as grime_key_event.code. */
 	void (*emit_ev)(grime_output *out, uint16_t type, uint16_t code, int32_t value);
+	/* Optional (may be NULL). Bring up whatever this output would otherwise
+	 * create on first use. Worth calling once you know a button or some
+	 * motion is coming: a device created mid-click emits its first event
+	 * before the desktop has opened the node, and that event is lost. */
+	void (*prepare)(grime_output *out);
 };
 
-/* emit_ev if the output has one, otherwise a no-op. */
+/* emit_ev / prepare if the output has them, otherwise a no-op. */
 void grime_output_ev(grime_output *out, uint16_t type, uint16_t code, int32_t value);
+void grime_output_prepare(grime_output *out);
 
 /* Linux backend: a uinput virtual keyboard. NULL on failure. */
 grime_output *grime_output_uinput_new(void);

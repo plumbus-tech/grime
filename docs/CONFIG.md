@@ -295,6 +295,13 @@ classic home-row-mod caveat: with `a` as a hold-modifier, rolling `a` into `s`
 quickly means "s inside a's layer", not "as".
 
 ## Safety
-- Emergency exit: hold `Esc` + `Backspace` for 1 s (checked before the keymap, always works).
+- Emergency exit: hold `Esc` + `Backspace` for 1 s, or all three mouse buttons
+  (`btn_left` + `btn_right` + `btn_middle`) — both are checked before the
+  keymap, so no config can take them away. The mouse one exists because a setup
+  where grime owns the pointer still has to be escapable.
 - `--timeout SEC` auto-exits. `--dry-run` logs without grabbing or emitting.
 - grime waits for all keys to be released before grabbing.
+- `grime --list-devices` and `grime --watch` never grab and never emit. Reach
+  for `--watch` when you want to know what a key sends before binding it.
+- grime refuses to grab a device with absolute axes (touchpads, touchscreens),
+  because it cannot forward those and a grabbed one would simply stop working.

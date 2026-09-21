@@ -40,12 +40,11 @@ static void write_event(int fd, int type, int code, int value)
 		LOG_WARN("uinput write: %s", strerror(errno));
 }
 
-static bool is_button(int code)
-{
-	/* advertising mouse/joystick buttons makes desktops treat us as a pointer */
-	return (code >= BTN_MISC && code < KEY_OK) || (code >= BTN_DPAD_UP && code <= BTN_GRIPR2) ||
-	       (code >= BTN_TRIGGER_HAPPY && code < KEY_MAX);
-}
+/* grime_is_button() spells these ranges as plain numbers; assert here, where
+ * the kernel's names are in scope, that the two agree. */
+_Static_assert(BTN_MISC == 0x100 && KEY_OK == 0x160 && BTN_DPAD_UP == 0x220 &&
+		       BTN_GRIPR2 == 0x227 && BTN_TRIGGER_HAPPY == 0x2c0 && KEY_MAX == 0x2ff,
+	       "grime_is_button() in grime/event.h is out of step with the kernel");
 
 /* The pointer only exists once something needs it, so a keyboard-only config
  * never puts a phantom mouse in the desktop's settings panel. The fd and its
@@ -89,7 +88,7 @@ static void emit(grime_output *out, uint16_t code, int value)
 {
 	struct uinput *u = (struct uinput *)out;
 	int fd = u->fd;
-	if (is_button(code)) {
+	if (grime_is_button(code)) {
 		if (code < PTR_BTN_FIRST || code > PTR_BTN_LAST) {
 			warn_unemittable(code);
 			return;
@@ -112,6 +111,11 @@ static void emit_ev(grime_output *out, uint16_t type, uint16_t code, int32_t val
 	if (fd < 0)
 		return;
 	write_event(fd, type, code, value);
+}
+
+static void prepare(grime_output *out)
+{
+	pointer_fd((struct uinput *)out);
 }
 
 static void destroy(grime_output *out)
@@ -160,7 +164,7 @@ grime_output *grime_output_uinput_new(void)
 	/* so held keys autorepeat on the Linux console, where no compositor does it */
 	ioctl(fd, UI_SET_EVBIT, EV_REP);
 	for (int code = 1; code < KEY_MAX; code++)
-		if (!is_button(code))
+		if (!grime_is_button(code))
 			ioctl(fd, UI_SET_KEYBIT, code);
 
 	struct uinput_setup setup = {0};
@@ -174,7 +178,8 @@ grime_output *grime_output_uinput_new(void)
 		return NULL;
 	}
 	struct uinput *u = calloc(1, sizeof *u);
-	u->base = (grime_output){.emit = emit, .destroy = destroy, .impl = u, .emit_ev = emit_ev};
+	u->base = (grime_output){.emit = emit, .destroy = destroy, .impl = u,
+				 .emit_ev = emit_ev, .prepare = prepare};
 	u->fd = fd;
 	u->pfd = open_uinput();
 	if (u->pfd >= 0)
@@ -194,7 +199,7 @@ static void log_emit_ev(grime_output *out, uint16_t type, uint16_t code, int32_t
 {
 	(void)out;
 	if (type == EV_REL)
-		LOG_INFO("forward rel %u %+d", code, value);
+		LOG_INFO("forward rel %s %+d", grime_rel_name(code), value);
 }
 
 static void log_destroy(grime_output *out)

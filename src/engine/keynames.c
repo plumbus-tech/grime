@@ -27,7 +27,18 @@ static const struct keyname aliases[] = {
 	{"forwardclick", 0x115}, {"backclick", 0x116},
 };
 
+/* Relative axes, for the motion that passes through rather than being mapped.
+ * Short and stable enough not to be worth generating. */
+static const char *const rel_names[] = {"x",	 "y",	 "z",	  "rx",	  "ry",
+					"rz",	 "hwheel", "dial", "wheel", "misc",
+					"reserved", "wheel_hi_res", "hwheel_hi_res"};
+
 #define N(a) (sizeof(a) / sizeof((a)[0]))
+
+const char *grime_rel_name(int axis)
+{
+	return axis >= 0 && (size_t)axis < N(rel_names) ? rel_names[axis] : "?";
+}
 
 int grime_key_from_name(const char *name)
 {

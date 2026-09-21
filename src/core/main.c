@@ -27,6 +27,10 @@ static struct {
 	grime_timer *reload_timer;
 	grime_timer *emergency_timer;
 	bool esc_down, backspace_down;
+	bool btn_left_down, btn_right_down, btn_middle_down;
+	/* a release is passed through only if its press was, so pairs stay paired
+	 * even when the keymap changed in between */
+	uint8_t passed[GRIME_KEY_COUNT];
 } app;
 
 static void usage(FILE *f)
@@ -39,11 +43,12 @@ static void usage(FILE *f)
 		"      --check         validate the config and exit\n"
 		"      --expand        print the config as the tree grime walks\n"
 		"      --list-devices  print every input device and what your config would do\n"
+		"      --watch         print events from every device, without grabbing\n"
 		"      --list-keys     print every key name\n"
 		"      --list-actions  print every action name\n"
 		"  -v, --verbose       log every step of the keymap walk\n"
 		"  -h, --help\n"
-		"Emergency exit: hold Esc + Backspace for 1 second.\n");
+		"Emergency exit: hold Esc + Backspace, or all three mouse buttons, for 1 second.\n");
 }
 
 static void do_reload(grime_loop *loop, void *ud)
@@ -87,7 +92,7 @@ static void on_sighup(grime_loop *loop, int sig, void *ud)
 static void on_emergency(grime_loop *loop, void *ud)
 {
 	(void)ud;
-	LOG_WARN("emergency exit (Esc + Backspace held)");
+	LOG_WARN("emergency exit (Esc + Backspace, or all three mouse buttons, held)");
 	grime_loop_stop(loop);
 }
 
@@ -98,23 +103,58 @@ static void on_timeout(grime_loop *loop, void *ud)
 	grime_loop_stop(loop);
 }
 
-/* Physical events arrive here first. The emergency chord bypasses the keymap. */
+/* Two ways out, because a setup where grime owns the pointer and not much else
+ * still has to be escapable. Both are checked before the keymap, so no config
+ * can take them away. */
+static bool emergency_held(void)
+{
+	return (app.esc_down && app.backspace_down) ||
+	       (app.btn_left_down && app.btn_right_down && app.btn_middle_down);
+}
+
+/* Physical events arrive here first. The emergency chords bypass the keymap. */
 static void on_key(const grime_key_event *ev, grime_device *dev, void *ud)
 {
-	(void)dev;
 	(void)ud;
 	if (ev->edge != GRIME_REPEAT) {
 		bool down = ev->edge == GRIME_PRESS;
-		if (ev->code == 1 /* esc */)
-			app.esc_down = down;
-		if (ev->code == 14 /* backspace */)
-			app.backspace_down = down;
-		if (app.esc_down && app.backspace_down)
+		switch (ev->code) {
+		case 1:     app.esc_down = down; break;       /* esc */
+		case 14:    app.backspace_down = down; break; /* backspace */
+		case 0x110: app.btn_left_down = down; break;
+		case 0x111: app.btn_right_down = down; break;
+		case 0x112: app.btn_middle_down = down; break;
+		}
+		if (emergency_held())
 			grime_timer_arm(app.emergency_timer, EMERGENCY_HOLD_MS);
 		else
 			grime_timer_disarm(app.emergency_timer);
 	}
-	grime_engine_feed(app.engine, ev);
+	if (grime_engine_feed(app.engine, ev) || ev->edge == GRIME_REPEAT)
+		return;
+
+	/* Nothing in the keymap wanted it. On a grabbed pointer that would mean a
+	 * button that no longer clicks, so its matcher can ask for the event to go
+	 * out unchanged instead of being swallowed. */
+	if (ev->code >= GRIME_KEY_COUNT || !dev ||
+	    grime_device_unmatched(dev) != GRIME_UNMATCHED_PASS)
+		return;
+	if (ev->edge == GRIME_PRESS)
+		app.passed[ev->code] = 1;
+	else if (!app.passed[ev->code])
+		return;
+	else
+		app.passed[ev->code] = 0;
+	grime_emit(&app.rt, ev->code, ev->edge == GRIME_PRESS ? 1 : 0);
+}
+
+/* A grabbed device's motion and wheel reach nobody unless grime replays them.
+ * A watched one is still being read by the OS, so replaying would double it. */
+static void on_raw(uint16_t type, uint16_t code, int32_t value, grime_device *dev, void *ud)
+{
+	(void)ud;
+	if (grime_device_needs_replay(dev))
+		grime_output_ev(app.rt.out, type, code, value);
 }
 
 /* Under sudo, give up root once the devices are open so "exec" actions run as you. */
@@ -156,9 +196,57 @@ static void print_action(const char *name, void *ud)
 	printf("%s\n", name);
 }
 
+/* --watch: what is this key, and which device sends it? Opens everything
+ * readable and grabs none of it, because the key you are hunting for is by
+ * definition not in your config yet. */
+static void watch_key(const grime_key_event *ev, grime_device *dev, void *ud)
+{
+	static const char *const edge[] = {"release", "press", "repeat"};
+	printf("%-18s %-30s key  %-16s %s (%u)\n", grime_device_path(dev),
+	       grime_device_name(dev), grime_key_name(ev->code), edge[ev->edge], ev->code);
+	fflush(stdout);
+}
+
+static void watch_raw(uint16_t type, uint16_t code, int32_t value, grime_device *dev, void *ud)
+{
+	if (type == GRIME_EV_SYN)
+		return;
+	printf("%-18s %-30s %-4s %-16s %+d\n", grime_device_path(dev), grime_device_name(dev),
+	       type == GRIME_EV_REL ? "rel" : type == GRIME_EV_ABS ? "abs" : "ev",
+	       type == GRIME_EV_REL ? grime_rel_name(code) : "?", value);
+	fflush(stdout);
+}
+
+static int run_watch(int timeout_s)
+{
+	app.loop = grime_loop_new();
+	if (!app.loop)
+		return 1;
+	grime_device_match all = {.vendor = -1, .product = -1, .bus = -1,
+				  .kind = GRIME_KIND_ANY, .grab = false};
+	grime_input_sink sink = {.on_key = watch_key, .on_raw = watch_raw};
+	printf("watching every readable device, grabbing none -- ctrl-c to stop\n");
+	fflush(stdout);
+	/* grab=false twice over: the matcher says so and so does the global. */
+	grime_input *in = grime_input_open(app.loop, &all, 1, false, &sink);
+	if (!in)
+		return 1;
+	drop_privileges();
+	grime_timer *deadline = NULL;
+	if (timeout_s > 0) {
+		deadline = grime_timer_new(app.loop, on_timeout, NULL);
+		grime_timer_arm(deadline, (uint64_t)timeout_s * 1000);
+	}
+	grime_loop_run(app.loop);
+	grime_timer_free(deadline);
+	grime_input_close(in);
+	grime_loop_free(app.loop);
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
-	enum { OPT_CHECK = 256, OPT_LIST_KEYS, OPT_LIST_ACTIONS, OPT_EXPAND, OPT_LIST_DEVICES };
+	enum { OPT_CHECK = 256, OPT_LIST_KEYS, OPT_LIST_ACTIONS, OPT_EXPAND, OPT_LIST_DEVICES, OPT_WATCH };
 	static const struct option opts[] = {
 		{"config", required_argument, 0, 'c'},     {"timeout", required_argument, 0, 't'},
 		{"dry-run", no_argument, 0, 'n'},          {"verbose", no_argument, 0, 'v'},
@@ -166,9 +254,10 @@ int main(int argc, char **argv)
 		{"list-keys", no_argument, 0, OPT_LIST_KEYS}, {"list-actions", no_argument, 0, OPT_LIST_ACTIONS},
 		{"expand", no_argument, 0, OPT_EXPAND},
 		{"list-devices", no_argument, 0, OPT_LIST_DEVICES},
+		{"watch", no_argument, 0, OPT_WATCH},
 		{0},
 	};
-	bool dry_run = false, check = false, expand = false, list_devices = false;
+	bool dry_run = false, check = false, expand = false, list_devices = false, watch = false;
 	int timeout_s = 0, c;
 	app.config_path = NULL;
 	while ((c = getopt_long(argc, argv, "c:t:nvh", opts, NULL)) != -1) {
@@ -180,6 +269,7 @@ int main(int argc, char **argv)
 		case OPT_CHECK: check = true; break;
 		case OPT_EXPAND: expand = true; break;
 		case OPT_LIST_DEVICES: list_devices = true; break;
+		case OPT_WATCH: watch = true; break;
 		case OPT_LIST_KEYS: grime_key_list(stdout); return 0;
 		case OPT_LIST_ACTIONS: grime_action_list(print_action, NULL); return 0;
 		case 'h': usage(stdout); return 0;
@@ -188,6 +278,9 @@ int main(int argc, char **argv)
 	}
 	if (!app.config_path)
 		app.config_path = default_config_path();
+
+	if (watch)
+		return run_watch(timeout_s);
 
 	char err[512];
 	if (expand) {
@@ -238,13 +331,19 @@ int main(int argc, char **argv)
 	app.emergency_timer = grime_timer_new(app.loop, on_emergency, NULL);
 	grime_loop_on_sighup(app.loop, on_sighup, NULL);
 
-	grime_input_sink sink = {.on_key = on_key};
+	grime_input_sink sink = {.on_key = on_key, .on_raw = on_raw};
 	grime_input *in = grime_input_open(app.loop, cfg.devices, cfg.ndevices, !dry_run, &sink);
+	bool wants_pointer = cfg.wants_pointer;
 	grime_config_free(&cfg);
 	if (!in) {
 		out->destroy(out);
 		return 1;
 	}
+	/* Do it now, while nobody is clicking. A virtual pointer brought up in the
+	 * middle of the first click emits that click before the desktop has opened
+	 * the node, and the desktop never sees it. */
+	if (wants_pointer || grime_input_needs_pointer(in))
+		grime_output_prepare(out);
 	drop_privileges();
 
 	grime_timer *deadline = NULL;
@@ -253,7 +352,7 @@ int main(int argc, char **argv)
 		grime_timer_arm(deadline, (uint64_t)timeout_s * 1000);
 		LOG_INFO("will exit after %d s", timeout_s);
 	}
-	LOG_INFO("emergency exit: hold Esc + Backspace for 1 s");
+	LOG_INFO("emergency exit: hold Esc + Backspace, or all three mouse buttons, for 1 s");
 
 	grime_loop_run(app.loop);
 

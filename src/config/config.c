@@ -164,6 +164,53 @@ static int parse_device(json_object *o, grime_device_match *m, const char *path,
 	return 0;
 }
 
+static bool is_button_name(const char *name);
+
+static bool mentions_button_value(json_object *v)
+{
+	if (json_object_is_type(v, json_type_string))
+		return is_button_name(json_object_get_string(v));
+	if (!json_object_is_type(v, json_type_array))
+		return false;
+	size_t n = json_object_array_length(v);
+	for (size_t i = 0; i < n; i++)
+		if (mentions_button_value(json_object_array_get_idx(v, i)))
+			return true;
+	return false;
+}
+
+static bool is_button_name(const char *name)
+{
+	int code = name ? grime_key_from_name(name) : -1;
+	return code >= 0 && grime_is_button((uint16_t)code);
+}
+
+/* Does this keymap ever name a button -- as an entry to bind, or as the key an
+ * action presses? If so grime needs a virtual pointer, and it is much better to
+ * create one up front than in the middle of the first click. */
+static bool mentions_button(json_object *o)
+{
+	if (json_object_is_type(o, json_type_array)) {
+		size_t n = json_object_array_length(o);
+		for (size_t i = 0; i < n; i++)
+			if (mentions_button(json_object_array_get_idx(o, i)))
+				return true;
+		return false;
+	}
+	if (!json_object_is_type(o, json_type_object))
+		return false;
+	json_object_object_foreach(o, k, v)
+	{
+		if (is_button_name(k))
+			return true;
+		if ((!strcmp(k, "key") || !strcmp(k, "mods")) && mentions_button_value(v))
+			return true;
+		if (mentions_button(v))
+			return true;
+	}
+	return false;
+}
+
 static int parse_root(json_object *root, grime_config *out, char *err, size_t errlen)
 {
 	memset(out, 0, sizeof *out);
@@ -197,6 +244,7 @@ static int parse_root(json_object *root, grime_config *out, char *err, size_t er
 	if (!json_object_object_get_ex(root, "keymap", &v))
 		return fail(err, errlen, "config", "missing \"keymap\"");
 	out->keymap = grime_node_new();
+	out->wants_pointer = mentions_button(v);
 	return parse_keymap(v, out->keymap, "keymap", err, errlen);
 }
 

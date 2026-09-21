@@ -30,7 +30,7 @@ scripts/grime-try.sh                    # real thing, configs/default.json, auto
 scripts/grime-try.sh configs/examples/weird-modifiers.json --timeout 120
 ```
 
-**Get out:** hold `Esc` + `Backspace` for 1 second. The try script also
+**Get out:** hold `Esc` + `Backspace`, or all three mouse buttons, for 1 second. The try script also
 auto-exits after 60 s by default (`--timeout 0` to disable).
 
 In `configs/default.json` (44 lines — it includes `layouts/qwerty.json` for
@@ -57,5 +57,6 @@ make test       # engine + config tests, no root needed
 make check-configs
 build/grime --expand -c configs/default.json   # what your config really means
 build/grime --list-devices                    # what grime can see, and what it would take
+build/grime --watch                           # what your keys send (never grabs)
 build/grime --help
 ```

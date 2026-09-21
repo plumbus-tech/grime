@@ -2,6 +2,7 @@
 #ifndef GRIME_CONFIG_H
 #define GRIME_CONFIG_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #include "grime/device.h"
@@ -11,6 +12,9 @@ typedef struct {
 	grime_device_match *devices; /* ndevices entries, in config order */
 	size_t ndevices;
 	grime_node *keymap;
+	/* the keymap binds at least one button, so grime will need a pointer to
+	 * emit through whether or not it grabs a mouse */
+	bool wants_pointer;
 } grime_config;
 
 int grime_config_load(const char *path, grime_config *out, char *err, size_t errlen);

@@ -9,6 +9,7 @@
 
 int grime_key_from_name(const char *name); /* -1 if unknown */
 const char *grime_key_name(int code);      /* "?" if unknown */
+const char *grime_rel_name(int axis);      /* "x", "wheel", ... ; "?" if unknown */
 void grime_key_list(FILE *f);
 
 #endif

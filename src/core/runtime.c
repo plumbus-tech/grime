@@ -25,3 +25,9 @@ void grime_output_ev(grime_output *out, uint16_t type, uint16_t code, int32_t va
 	if (out && out->emit_ev)
 		out->emit_ev(out, type, code, value);
 }
+
+void grime_output_prepare(grime_output *out)
+{
+	if (out && out->prepare)
+		out->prepare(out);
+}

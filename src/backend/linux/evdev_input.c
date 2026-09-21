@@ -21,6 +21,7 @@ struct grime_device {
 	char path[300];
 	char name[256];
 	bool grab;
+	bool forward; /* has motion of its own that must keep reaching the OS */
 	grime_unmatched unmatched;
 };
 
@@ -36,6 +37,8 @@ struct grime_input {
 
 const char *grime_device_path(const grime_device *dev) { return dev->path; }
 const char *grime_device_name(const grime_device *dev) { return dev->name; }
+grime_unmatched grime_device_unmatched(const grime_device *dev) { return dev->unmatched; }
+bool grime_device_needs_replay(const grime_device *dev) { return dev->grab && dev->forward; }
 
 static bool any_key_down(int fd)
 {
@@ -89,19 +92,28 @@ static void on_readable(grime_loop *loop, int fd, int io, void *ud)
 		}
 		return;
 	}
-	if (!in->grabbed && in->grab)
-		return; /* still waiting for keys to be released */
 	int di = find_fd(in, fd);
 	grime_device *dev = di >= 0 ? &in->devs[di] : NULL;
+	if (dev && dev->grab && !in->grabbed)
+		return; /* still waiting for keys to be released */
 	for (size_t i = 0; i < n / sizeof evs[0]; i++) {
-		if (evs[i].type != EV_KEY || evs[i].value < 0 || evs[i].value > 2)
+		if (evs[i].type == EV_KEY) {
+			if (evs[i].value < 0 || evs[i].value > 2)
+				continue;
+			grime_key_event ev = {
+				.code = evs[i].code,
+				.edge = (grime_edge)evs[i].value,
+				.time_ms = grime_now_ms(),
+			};
+			in->sink.on_key(&ev, dev, in->sink.ud);
 			continue;
-		grime_key_event ev = {
-			.code = evs[i].code,
-			.edge = (grime_edge)evs[i].value,
-			.time_ms = grime_now_ms(),
-		};
-		in->sink.on_key(&ev, dev, in->sink.ud);
+		}
+		/* Motion, wheel, and the device's own SYN_REPORT. Whether these
+		 * need replaying is the sink's call (grime_device_needs_replay),
+		 * because --watch wants to see them without sending them anywhere. */
+		if (dev && in->sink.on_raw)
+			in->sink.on_raw(evs[i].type, evs[i].code, evs[i].value, dev,
+					in->sink.ud);
 	}
 }
 
@@ -138,9 +150,26 @@ static void keep_device(grime_input *in, const grime_probe *p, int fd,
 		return;
 	}
 	grime_device *dev = &in->devs[in->nfds++];
-	*dev = (grime_device){.fd = fd, .grab = m->grab && in->grab, .unmatched = m->unmatched};
+	*dev = (grime_device){.fd = fd, .grab = m->grab && in->grab, .unmatched = m->unmatched,
+			      .forward = p->has_rel};
 	snprintf(dev->path, sizeof dev->path, "%s", p->path);
 	snprintf(dev->name, sizeof dev->name, "%s", p->name);
+
+	/* Absolute axes would need the source's ranges declared on a virtual
+	 * device axis by axis, which grime doesn't do. Grabbing one and dropping
+	 * its events means a touchpad or touchscreen that no longer works, so
+	 * don't: watch it instead and say why. */
+	if (dev->grab && p->has_abs) {
+		LOG_ERR("%s (%s) reports absolute axes, which grime can't forward -- "
+			"observing it instead of grabbing it",
+			dev->path, dev->name);
+		dev->grab = false;
+	}
+	if (dev->grab && p->has_sw)
+		LOG_WARN("grabbing %s (%s) also hides its switch events (lid, rfkill) "
+			 "from the system",
+			 dev->path, dev->name);
+
 	LOG_INFO("using %s (%s) [%s%s]", dev->path, dev->name,
 		 grime_device_kind_name(p->info.kind), dev->grab ? ", grabbed" : ", observing");
 	grime_loop_add_fd(in->loop, fd, GRIME_IO_READ, on_readable, in);
@@ -201,6 +230,14 @@ grime_input *grime_input_open(grime_loop *loop, const grime_device_match *device
 		grime_timer_arm(in->grab_timer, 0);
 	}
 	return in;
+}
+
+bool grime_input_needs_pointer(const grime_input *in)
+{
+	for (int i = 0; i < in->nfds; i++)
+		if (grime_device_needs_replay(&in->devs[i]))
+			return true;
+	return false;
 }
 
 void grime_input_close(grime_input *in)
