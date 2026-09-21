@@ -31,6 +31,17 @@ test: $(TESTS)
 
 check-configs: $(BUILD)/grime
 	@for f in configs/*.json configs/examples/*.json; do $(BUILD)/grime --check -c $$f || exit 1; done
+# Layout files are layers, not configs, so --check can't take them directly.
+# Wrap each in the smallest config that uses it; assumes the layer is named
+# after the file, which is the convention configs/layouts/ follows.
+	@for f in configs/layouts/*.json; do \
+		n=$$(basename $$f .json); \
+		printf '{"include":["%s"],"base":"%s","keymap":{}}' "$$PWD/$$f" "$$n" \
+			> $(BUILD)/layer-check.json; \
+		$(BUILD)/grime --check -c $(BUILD)/layer-check.json >/dev/null \
+			|| { echo "$$f: FAILED (is the layer named \"$$n\"?)"; exit 1; }; \
+		echo "$$f: ok"; \
+	done
 
 fmt:
 	clang-format -i $(SRCS) $(wildcard include/grime/*.h tests/*.c tests/*.h)

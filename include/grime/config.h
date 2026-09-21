@@ -5,8 +5,12 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include <stdint.h>
+
 #include "grime/device.h"
 #include "grime/engine.h"
+
+#define GRIME_EMERGENCY_MAX 4
 
 typedef struct {
 	grime_device_match *devices; /* ndevices entries, in config order */
@@ -15,6 +19,11 @@ typedef struct {
 	/* the keymap binds at least one button, so grime will need a pointer to
 	 * emit through whether or not it grabs a mouse */
 	bool wants_pointer;
+	/* Held together for a second, this gets the keyboard back. Checked before
+	 * the keymap, so no binding can shadow it. Empty means the user turned it
+	 * off, which is their business but worth a warning. */
+	uint16_t emergency[GRIME_EMERGENCY_MAX];
+	size_t nemergency;
 } grime_config;
 
 int grime_config_load(const char *path, grime_config *out, char *err, size_t errlen);

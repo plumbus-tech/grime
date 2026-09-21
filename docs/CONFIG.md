@@ -10,6 +10,7 @@ Validate with `grime --check -c PATH`. See what it really means with
   "devices": ["auto"],
   "include": ["layouts/qwerty.json"],
   "base": "qwerty",
+  "emergency": ["esc", "backspace"],
   "keymap": { ... },
   "layers": { ... }
 }
@@ -20,6 +21,8 @@ Validate with `grime --check -c PATH`. See what it really means with
 - `base` — the name of a layer to fill in with: every key in it types itself
   unless your keymap says otherwise. Without a base, **a key you don't mention
   does nothing**, which is occasionally what you want and usually not.
+- `emergency` — the keys that, held together for a second, give the keyboard
+  back. Defaults to `["esc", "backspace"]`; at least two, at most four. See Safety.
 - `keymap` — the root of the tree.
 - `layers` — keymaps with names, so you can use one in more than one place.
 
@@ -206,7 +209,7 @@ An **action** is `{"do": "...", ...}`, or a string: `"esc"` taps that key,
 
 `include` takes paths, resolved against the directory of the file that names
 them (absolute and `~/` work too). Each included file may have `include`,
-`layers` and `keymap`; only the main config sets `devices` and `base`.
+`layers` and `keymap`; only the main config sets `devices`, `emergency` and `base`.
 
 ```json
 "include": ["layouts/qwerty.json", "layouts/dvorak.json", "~/.config/grime/work.json"]
@@ -309,9 +312,12 @@ quickly means "s inside a's layer", not "as".
 
 ## Safety
 - Emergency exit: hold `Esc` + `Backspace` for 1 s, or all three mouse buttons
-  (`btn_left` + `btn_right` + `btn_middle`) — both are checked before the
-  keymap, so no config can take them away. The mouse one exists because a setup
-  where grime owns the pointer still has to be escapable.
+  (`btn_left` + `btn_right` + `btn_middle`). Both are checked before the keymap,
+  so no binding can shadow them. The mouse one exists because a setup where
+  grime owns the pointer still has to be escapable with the pointer.
+- `"emergency": ["f12", "f11"]` changes the keyboard chord (two to four keys).
+  `"emergency": false` turns **both** off — then `--timeout`, or killing grime
+  from another machine, is all you have. grime says so loudly at startup.
 - `--timeout SEC` auto-exits. `--dry-run` logs without grabbing or emitting.
 - grime waits for all keys to be released before grabbing.
 - `grime --list-devices` and `grime --watch` never grab and never emit. Reach

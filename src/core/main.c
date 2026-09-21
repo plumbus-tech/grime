@@ -26,8 +26,9 @@ static struct {
 	grime_runtime rt;
 	grime_timer *reload_timer;
 	grime_timer *emergency_timer;
-	bool esc_down, backspace_down;
-	bool btn_left_down, btn_right_down, btn_middle_down;
+	uint8_t down[GRIME_KEY_COUNT]; /* physically held, before the keymap sees it */
+	uint16_t emergency[GRIME_EMERGENCY_MAX];
+	size_t nemergency;
 	/* a release is passed through only if its press was, so pairs stay paired
 	 * even when the keymap changed in between */
 	uint8_t passed[GRIME_KEY_COUNT];
@@ -104,27 +105,31 @@ static void on_timeout(grime_loop *loop, void *ud)
 }
 
 /* Two ways out, because a setup where grime owns the pointer and not much else
- * still has to be escapable. Both are checked before the keymap, so no config
- * can take them away. */
+ * still has to be escapable with a pointer. Both are checked before the keymap,
+ * so no binding can shadow them. */
+static bool all_down(const uint16_t *codes, size_t n)
+{
+	for (size_t i = 0; i < n; i++)
+		if (!app.down[codes[i]])
+			return false;
+	return n > 0;
+}
+
 static bool emergency_held(void)
 {
-	return (app.esc_down && app.backspace_down) ||
-	       (app.btn_left_down && app.btn_right_down && app.btn_middle_down);
+	static const uint16_t buttons[] = {0x110, 0x111, 0x112}; /* left, right, middle */
+	if (!app.nemergency)
+		return false; /* turned off in the config, buttons and all */
+	return all_down(app.emergency, app.nemergency) ||
+	       all_down(buttons, sizeof buttons / sizeof buttons[0]);
 }
 
 /* Physical events arrive here first. The emergency chords bypass the keymap. */
 static void on_key(const grime_key_event *ev, grime_device *dev, void *ud)
 {
 	(void)ud;
-	if (ev->edge != GRIME_REPEAT) {
-		bool down = ev->edge == GRIME_PRESS;
-		switch (ev->code) {
-		case 1:     app.esc_down = down; break;       /* esc */
-		case 14:    app.backspace_down = down; break; /* backspace */
-		case 0x110: app.btn_left_down = down; break;
-		case 0x111: app.btn_right_down = down; break;
-		case 0x112: app.btn_middle_down = down; break;
-		}
+	if (ev->edge != GRIME_REPEAT && ev->code < GRIME_KEY_COUNT) {
+		app.down[ev->code] = ev->edge == GRIME_PRESS;
 		if (emergency_held())
 			grime_timer_arm(app.emergency_timer, EMERGENCY_HOLD_MS);
 		else
@@ -327,6 +332,8 @@ int main(int argc, char **argv)
 				 .quit = rt_quit, .reload = rt_reload};
 	app.engine = grime_engine_new(&app.rt, cfg.keymap);
 	cfg.keymap = NULL;
+	memcpy(app.emergency, cfg.emergency, sizeof app.emergency);
+	app.nemergency = cfg.nemergency;
 	app.reload_timer = grime_timer_new(app.loop, do_reload, NULL);
 	app.emergency_timer = grime_timer_new(app.loop, on_emergency, NULL);
 	grime_loop_on_sighup(app.loop, on_sighup, NULL);
@@ -352,7 +359,16 @@ int main(int argc, char **argv)
 		grime_timer_arm(deadline, (uint64_t)timeout_s * 1000);
 		LOG_INFO("will exit after %d s", timeout_s);
 	}
-	LOG_INFO("emergency exit: hold Esc + Backspace, or all three mouse buttons, for 1 s");
+	if (app.nemergency) {
+		char chord[128] = "";
+		for (size_t i = 0; i < app.nemergency; i++)
+			snprintf(chord + strlen(chord), sizeof chord - strlen(chord), "%s%s",
+				 i ? " + " : "", grime_key_name(app.emergency[i]));
+		LOG_INFO("emergency exit: hold %s, or all three mouse buttons, for 1 s", chord);
+	} else {
+		LOG_WARN("emergency exit is turned off in your config -- --timeout and "
+			 "killing grime from elsewhere are what you have left");
+	}
 
 	grime_loop_run(app.loop);
 

@@ -241,6 +241,22 @@ static int parse_root(json_object *root, grime_config *out, char *err, size_t er
 		};
 	}
 
+	/* The default is what it has always been, and it is also what you get by
+	 * not mentioning it. */
+	if (json_object_object_get_ex(root, "emergency", &v)) {
+		size_t n = json_object_array_length(v);
+		for (size_t i = 0; i < n && i < GRIME_EMERGENCY_MAX; i++) {
+			const char *name = json_object_get_string(
+				json_object_array_get_idx(v, i));
+			out->emergency[out->nemergency++] =
+				(uint16_t)grime_key_from_name(name);
+		}
+	} else {
+		out->emergency[0] = 1;  /* esc */
+		out->emergency[1] = 14; /* backspace */
+		out->nemergency = 2;
+	}
+
 	if (!json_object_object_get_ex(root, "keymap", &v))
 		return fail(err, errlen, "config", "missing \"keymap\"");
 	out->keymap = grime_node_new();

@@ -19,6 +19,7 @@
 #define MAX_PATH 1024
 #define MAX_MODS 4
 #define MAX_STEPS 8
+#define MAX_EMERGENCY 4
 #define N_ELEM(a) (sizeof(a) / sizeof((a)[0]))
 
 struct ctx {
@@ -658,6 +659,43 @@ bad:
 	return NULL;
 }
 
+/* The way out, as a list of key names -- or false, for someone who is sure. */
+static json_object *lower_emergency(struct ctx *c, json_object *in)
+{
+	if (json_object_is_type(in, json_type_boolean)) {
+		if (json_object_get_boolean(in))
+			return (fail(c, "emergency",
+				     "expected a list of key names like [\"esc\", \"backspace\"], "
+				     "or false to turn it off"),
+				NULL);
+		return json_object_new_array(); /* off */
+	}
+	if (!json_object_is_type(in, json_type_array))
+		return (fail(c, "emergency",
+			     "expected a list of key names like [\"esc\", \"backspace\"], or false"),
+			NULL);
+	size_t n = json_object_array_length(in);
+	if (n < 2)
+		return (fail(c, "emergency",
+			     "needs at least two keys, or you will trip it by accident"),
+			NULL);
+	if (n > MAX_EMERGENCY)
+		return (fail(c, "emergency", "at most %d keys", MAX_EMERGENCY), NULL);
+	json_object *out = json_object_new_array();
+	for (size_t i = 0; i < n; i++) {
+		const char *name = str_of(json_object_array_get_idx(in, i));
+		const char *canonical = name ? canon(name) : NULL;
+		if (!canonical) {
+			fail(c, "emergency", "unknown key \"%s\" (see grime --list-keys)",
+			     name ? name : "(not a string)");
+			json_object_put(out);
+			return NULL;
+		}
+		json_object_array_add(out, json_object_new_string(canonical));
+	}
+	return out;
+}
+
 static json_object *lower_devices(struct ctx *c, json_object *in)
 {
 	if (!json_object_is_type(in, json_type_array))
@@ -757,16 +795,18 @@ static int gather(struct ctx *c, json_object *file, const char *dir, json_object
 		  json_object *keymap, const char *path, bool is_root)
 {
 	json_object *v;
-	if (!is_root && (obj_get(file, "devices") || obj_get(file, "base")))
-		return fail(c, path, "only the main config can set \"devices\" or \"base\"");
+	if (!is_root && (obj_get(file, "devices") || obj_get(file, "base") ||
+			 obj_get(file, "emergency")))
+		return fail(c, path,
+			    "only the main config can set \"devices\", \"emergency\" or \"base\"");
 	json_object_object_foreach(file, k, unused)
 	{
 		(void)unused;
 		if (strcmp(k, "devices") && strcmp(k, "keymap") && strcmp(k, "base") &&
-		    strcmp(k, "layers") && strcmp(k, "include"))
+		    strcmp(k, "layers") && strcmp(k, "include") && strcmp(k, "emergency"))
 			return fail(c, path,
-				    "unknown \"%s\" (expected devices, base, include, layers "
-				    "or keymap)",
+				    "unknown \"%s\" (expected devices, emergency, base, "
+				    "include, layers or keymap)",
 				    k);
 	}
 	if ((v = obj_get(file, "layers"))) {
@@ -868,6 +908,16 @@ json_object *grime_config_lower(json_object *root, const char *path, char *err, 
 			goto done;
 		}
 		json_object_object_add(out, "devices", lowered);
+	}
+	json_object *em = obj_get(root, "emergency");
+	if (em) {
+		json_object *lowered = lower_emergency(&c, em);
+		if (!lowered) {
+			json_object_put(out);
+			out = NULL;
+			goto done;
+		}
+		json_object_object_add(out, "emergency", lowered);
 	}
 	json_object_object_add(out, "keymap", out_km);
 	out_km = NULL;

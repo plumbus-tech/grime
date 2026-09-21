@@ -135,6 +135,33 @@ TEST(ids_must_be_hex_strings)
 	grime_config_free(&cfg);
 }
 
+/* The way out is config, but it defaults to what it has always been, and you
+ * cannot set it to something you would trip on by accident. */
+TEST(the_emergency_chord_is_configurable)
+{
+	CHECK(load("\"devices\": [\"auto\"]"));
+	CHECK(cfg.nemergency == 2);
+	CHECK(cfg.emergency[0] == 1);  /* esc */
+	CHECK(cfg.emergency[1] == 14); /* backspace */
+	grime_config_free(&cfg);
+
+	CHECK(load("\"emergency\": [\"f12\", \"f11\"]"));
+	CHECK(cfg.nemergency == 2);
+	CHECK(cfg.emergency[0] == 88); /* f12 */
+	CHECK(cfg.emergency[1] == 87); /* f11 */
+	grime_config_free(&cfg);
+
+	CHECK(load("\"emergency\": false"));
+	CHECK(cfg.nemergency == 0);
+	grime_config_free(&cfg);
+
+	CHECK(fails("\"emergency\": [\"esc\"]", "at least two keys"));
+	CHECK(fails("\"emergency\": [\"a\",\"b\",\"c\",\"d\",\"e\"]", "at most 4 keys"));
+	CHECK(fails("\"emergency\": [\"esc\", \"nosuchkey\"]", "unknown key"));
+	CHECK(fails("\"emergency\": true", "or false to turn it off"));
+	CHECK(fails("\"emergency\": \"esc\"", "list of key names"));
+}
+
 TEST(the_expansion_shows_what_a_matcher_became)
 {
 	char err[512];
@@ -158,6 +185,7 @@ int main(void)
 	RUN(mixed_spellings_keep_their_order);
 	RUN(the_errors_say_what_to_do);
 	RUN(ids_must_be_hex_strings);
+	RUN(the_emergency_chord_is_configurable);
 	RUN(the_expansion_shows_what_a_matcher_became);
 	return DONE();
 }
