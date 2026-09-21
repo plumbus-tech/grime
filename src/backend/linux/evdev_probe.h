@@ -21,7 +21,8 @@ typedef struct {
 	char links[PROBE_MAX_LINKS][PROBE_STR];
 	const char *linkv[PROBE_MAX_LINKS];
 	bool has_rel, has_abs, has_sw;
-	bool is_ours; /* one of grime's own virtual devices */
+	bool is_ours;   /* one of grime's own virtual devices */
+	int open_errno; /* why fd is -1, when it is */
 	grime_device_info info;
 } grime_probe;
 

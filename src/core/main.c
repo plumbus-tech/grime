@@ -63,8 +63,13 @@ static void do_reload(grime_loop *loop, void *ud)
 		return;
 	}
 	grime_release_all(&app.rt);
+	/* release_all already sent a release for everything held, passed-through
+	 * keys included, so the next physical release must not send another */
+	memset(app.passed, 0, sizeof app.passed);
 	grime_engine_set_keymap(app.engine, cfg.keymap);
 	cfg.keymap = NULL;
+	memcpy(app.emergency, cfg.emergency, sizeof app.emergency);
+	app.nemergency = cfg.nemergency;
 	grime_config_free(&cfg);
 	LOG_INFO("config reloaded");
 }

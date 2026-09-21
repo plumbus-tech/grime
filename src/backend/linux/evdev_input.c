@@ -198,13 +198,17 @@ struct open_ctx {
 	const grime_device_match *devices;
 	size_t ndevices;
 	bool matched[MAX_DEVICES];
+	int seen, unreadable;
 };
 
 static bool consider(const grime_probe *p, int fd, void *ud)
 {
 	struct open_ctx *c = ud;
+	c->seen++;
 	if (fd < 0) {
 		LOG_DEBUG("skipping %s: %s", p->path, p->name);
+		if (p->open_errno == EACCES)
+			c->unreadable++;
 		return false;
 	}
 	if (p->is_ours)
@@ -352,6 +356,22 @@ grime_input *grime_input_open(grime_loop *loop, const grime_device_match *device
 
 	struct open_ctx ctx = {.in = in, .devices = devices, .ndevices = ndevices};
 	grime_probe_each(consider, &ctx);
+
+	/* Every node unreadable is a permissions problem, not a config one, and
+	 * saying "nothing matched" would send someone off editing the wrong file. */
+	if (ctx.unreadable && ctx.unreadable == ctx.seen) {
+		LOG_ERR("can't read any of the %d input devices: permission denied. "
+			"Run with sudo, or scripts/setup-permissions.sh once to join the "
+			"input group.",
+			ctx.seen);
+		grime_timer_free(in->grab_timer);
+		grime_device_match_free(in->devices, in->ndevices);
+		free(in);
+		return NULL;
+	}
+	if (ctx.unreadable)
+		LOG_WARN("%d of %d input devices could not be read (permission denied)",
+			 ctx.unreadable, ctx.seen);
 
 	/* A matcher that names one exact path deserves a straight answer when
 	 * nothing came back -- usually a typo or a device that isn't plugged in. */

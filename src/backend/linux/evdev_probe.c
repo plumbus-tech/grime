@@ -158,6 +158,7 @@ void grime_probe_each(bool (*fn)(const grime_probe *p, int fd, void *ud), void *
 			memset(&p, 0, sizeof p);
 			snprintf(p.path, sizeof p.path, "%s", path);
 			snprintf(p.name, sizeof p.name, "(%s)", strerror(errno));
+			p.open_errno = errno;
 			p.info = (grime_device_info){.path = p.path, .vendor = -1,
 						     .product = -1, .bus = -1};
 			fn(&p, -1, ud);

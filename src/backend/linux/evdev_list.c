@@ -11,12 +11,15 @@ struct list_ctx {
 	FILE *f;
 	const grime_device_match *devices;
 	size_t ndevices;
+	int seen, unreadable;
 };
 
 static bool print_one(const grime_probe *p, int fd, void *ud)
 {
 	struct list_ctx *c = ud;
+	c->seen++;
 	if (fd < 0) {
+		c->unreadable++;
 		fprintf(c->f, "  %-18s %-8s %-9s %-30s %s\n", p->path, "-", "-", p->name,
 			"unreadable");
 		return false;
@@ -51,6 +54,11 @@ void grime_input_list(FILE *f, const grime_device_match *devices, size_t ndevice
 	fprintf(f, "  %-18s %-8s %-9s %-30s %s\n", "device", "kind", "id", "name", "match");
 	struct list_ctx ctx = {.f = f, .devices = devices, .ndevices = ndevices};
 	grime_probe_each(print_one, &ctx);
+	if (ctx.unreadable)
+		fprintf(f,
+			"\n%d of %d devices could not be read. Run with sudo, or\n"
+			"scripts/setup-permissions.sh once to join the input group.\n",
+			ctx.unreadable, ctx.seen);
 	fprintf(f, "\nkind: keyboard = has a full alphabet, keys = keys but no alphabet\n"
 		   "      (laptop fn rows, hotkey blocks), pointer = buttons and motion.\n");
 }
