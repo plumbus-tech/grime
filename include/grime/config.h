@@ -4,10 +4,11 @@
 
 #include <stddef.h>
 
+#include "grime/device.h"
 #include "grime/engine.h"
 
 typedef struct {
-	char **devices;
+	grime_device_match *devices; /* ndevices entries, in config order */
 	size_t ndevices;
 	grime_node *keymap;
 } grime_config;

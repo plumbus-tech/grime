@@ -111,6 +111,25 @@ static int parse_keymap(json_object *obj, grime_node *node, const char *path, ch
 	return 0;
 }
 
+/* One entry of "devices". Today a string: "auto" is the keyboard heuristic,
+ * anything else is a literal path taken as-is, with no capability filter --
+ * which is exactly what the backend did before matchers existed. */
+static int parse_device(const char *s, grime_device_match *m, char *err, size_t errlen)
+{
+	*m = (grime_device_match){
+		.vendor = -1, .product = -1, .bus = -1, .grab = true,
+		.kind = GRIME_KIND_ANY, .unmatched = GRIME_UNMATCHED_DROP,
+	};
+	if (!strcmp(s, "auto")) {
+		m->kind = GRIME_KIND_KEYBOARD;
+		return 0;
+	}
+	m->path = strdup(s);
+	if (!m->path)
+		return fail(err, errlen, "devices", "out of memory");
+	return 0;
+}
+
 static int parse_root(json_object *root, grime_config *out, char *err, size_t errlen)
 {
 	memset(out, 0, sizeof *out);
@@ -125,7 +144,7 @@ static int parse_root(json_object *root, grime_config *out, char *err, size_t er
 		if (!n)
 			return fail(err, errlen, "devices",
 				    "empty list: grime would grab nothing. Use [\"auto\"]");
-		out->devices = calloc(n, sizeof(char *));
+		out->devices = calloc(n, sizeof *out->devices);
 		if (!out->devices)
 			return fail(err, errlen, "devices", "out of memory");
 		for (size_t i = 0; i < n; i++) {
@@ -133,13 +152,15 @@ static int parse_root(json_object *root, grime_config *out, char *err, size_t er
 			if (!json_object_is_type(d, json_type_string))
 				return fail(err, errlen, "devices",
 					    "expected device paths or [\"auto\"]");
-			out->devices[out->ndevices++] = strdup(json_object_get_string(d));
+			if (parse_device(json_object_get_string(d),
+					 &out->devices[out->ndevices++], err, errlen) < 0)
+				return -1;
 		}
 	} else {
-		out->devices = calloc(1, sizeof(char *));
+		out->devices = calloc(1, sizeof *out->devices);
 		if (!out->devices)
 			return fail(err, errlen, "devices", "out of memory");
-		out->devices[out->ndevices++] = strdup("auto");
+		parse_device("auto", &out->devices[out->ndevices++], err, errlen);
 	}
 
 	if (!json_object_object_get_ex(root, "keymap", &v))
@@ -206,9 +227,7 @@ int grime_config_load(const char *path, grime_config *out, char *err, size_t err
 
 void grime_config_free(grime_config *cfg)
 {
-	for (size_t i = 0; i < cfg->ndevices; i++)
-		free(cfg->devices[i]);
-	free(cfg->devices);
+	grime_device_match_free(cfg->devices, cfg->ndevices);
 	grime_node_free(cfg->keymap);
 	memset(cfg, 0, sizeof *cfg);
 }

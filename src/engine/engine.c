@@ -219,7 +219,8 @@ static void fire(grime_engine *e, const grime_binding *b, uint16_t code, const c
 		grime_action_run(b->action, e->rt);
 }
 
-static void on_press(grime_engine *e, uint16_t code)
+/* Returns true if a binding matched -- see grime_engine_feed. */
+static bool on_press(grime_engine *e, uint16_t code)
 {
 	struct keystate *ks = &e->keys[code];
 	ks->down = true;
@@ -238,7 +239,7 @@ static void on_press(grime_engine *e, uint16_t code)
 	if (!b) {
 		LOG_DEBUG("%s press: unmapped", grime_key_name(code));
 		pop_prefixes(e); /* like emacs: an undefined key cancels the prefix */
-		return;
+		return false;
 	}
 	if (b->exit == GRIME_EXIT_TOGGLE) {
 		fire(e, b, code, "press"); /* both ways, so "do" can announce it */
@@ -249,20 +250,21 @@ static void on_press(grime_engine *e, uint16_t code)
 		else
 			push(e, b, code);
 		pop_prefixes(e); /* a toggle ends any prefix that led to it */
-		return;
+		return true;
 	}
 	fire(e, b, code, "press");
 	if (b->then)
 		push(e, b, code);
 	else if (b->action)
 		pop_prefixes(e);
+	return true;
 }
 
-static void on_release(grime_engine *e, uint16_t code)
+static bool on_release(grime_engine *e, uint16_t code)
 {
 	struct keystate *ks = &e->keys[code];
 	if (!ks->down)
-		return; /* pressed before we started, or before a reload */
+		return false; /* pressed before we started, or before a reload */
 	ks->down = false;
 	bool alone = ks->press_seq == e->press_seq;
 
@@ -276,30 +278,30 @@ static void on_release(grime_engine *e, uint16_t code)
 
 	const grime_binding *b = grime_node_lookup(ks->node, code, GRIME_RELEASE);
 	if (!b)
-		return;
+		return false;
 	if (b->alone && !alone) {
 		LOG_DEBUG("%s release: not alone, skipped", grime_key_name(code));
-		return;
+		return false;
 	}
 	fire(e, b, code, "release");
 	if (b->then)
 		push(e, b, code);
 	else if (b->action && ks->node == e->stack[e->depth - 1].node)
 		pop_prefixes(e); /* only if it fired *inside* the prefix */
+	return true;
 }
 
-void grime_engine_feed(grime_engine *e, const grime_key_event *ev)
+bool grime_engine_feed(grime_engine *e, const grime_key_event *ev)
 {
 	if (ev->code >= GRIME_KEY_COUNT)
-		return;
+		return false;
 	switch (ev->edge) {
 	case GRIME_PRESS:
-		on_press(e, ev->code);
-		break;
+		return on_press(e, ev->code);
 	case GRIME_RELEASE:
-		on_release(e, ev->code);
-		break;
+		return on_release(e, ev->code);
 	case GRIME_REPEAT:
 		break; /* the OS does its own autorepeat for held output keys */
 	}
+	return false;
 }

@@ -39,7 +39,9 @@ typedef struct grime_engine grime_engine;
 grime_engine *grime_engine_new(grime_runtime *rt, grime_node *root);
 /* Swap in a new tree (takes ownership, frees the old one) and reset walk state. */
 void grime_engine_set_keymap(grime_engine *e, grime_node *root);
-void grime_engine_feed(grime_engine *e, const grime_key_event *ev);
+/* True if the keymap had a binding for this event; false if nothing matched,
+ * which is what lets a caller pass the key through instead of swallowing it. */
+bool grime_engine_feed(grime_engine *e, const grime_key_event *ev);
 void grime_engine_free(grime_engine *e);
 
 #endif

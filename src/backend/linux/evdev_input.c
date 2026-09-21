@@ -17,16 +17,24 @@
 #define NBITS(x) (((x) + 8 * sizeof(long) - 1) / (8 * sizeof(long)))
 #define TEST_BIT(bit, arr) ((arr)[(bit) / (8 * sizeof(long))] >> ((bit) % (8 * sizeof(long))) & 1)
 
+struct grime_device {
+	int fd;
+	char path[300];
+	char name[256];
+};
+
 struct grime_input {
 	grime_loop *loop;
-	grime_input_cb cb;
-	void *ud;
+	grime_input_sink sink;
 	bool grab;
 	bool grabbed;
-	int fds[MAX_DEVICES];
+	struct grime_device devs[MAX_DEVICES];
 	int nfds;
 	grime_timer *grab_timer;
 };
+
+const char *grime_device_path(const grime_device *dev) { return dev->path; }
+const char *grime_device_name(const grime_device *dev) { return dev->name; }
 
 static bool looks_like_keyboard(int fd)
 {
@@ -58,18 +66,18 @@ static bool any_key_down(int fd)
 static void drop_device(grime_input *in, int i)
 {
 	if (in->grabbed)
-		ioctl(in->fds[i], EVIOCGRAB, 0);
-	grime_loop_del_fd(in->loop, in->fds[i]);
-	close(in->fds[i]);
+		ioctl(in->devs[i].fd, EVIOCGRAB, 0);
+	grime_loop_del_fd(in->loop, in->devs[i].fd);
+	close(in->devs[i].fd);
 	for (; i < in->nfds - 1; i++)
-		in->fds[i] = in->fds[i + 1];
+		in->devs[i] = in->devs[i + 1];
 	in->nfds--;
 }
 
 static int find_fd(const grime_input *in, int fd)
 {
 	for (int i = 0; i < in->nfds; i++)
-		if (in->fds[i] == fd)
+		if (in->devs[i].fd == fd)
 			return i;
 	return -1;
 }
@@ -97,6 +105,8 @@ static void on_readable(grime_loop *loop, int fd, int io, void *ud)
 	}
 	if (!in->grabbed && in->grab)
 		return; /* still waiting for keys to be released */
+	int di = find_fd(in, fd);
+	grime_device *dev = di >= 0 ? &in->devs[di] : NULL;
 	for (size_t i = 0; i < n / sizeof evs[0]; i++) {
 		if (evs[i].type != EV_KEY || evs[i].value < 0 || evs[i].value > 2)
 			continue;
@@ -105,7 +115,7 @@ static void on_readable(grime_loop *loop, int fd, int io, void *ud)
 			.edge = (grime_edge)evs[i].value,
 			.time_ms = grime_now_ms(),
 		};
-		in->cb(&ev, in->ud);
+		in->sink.on_key(&ev, dev, in->sink.ud);
 	}
 }
 
@@ -115,14 +125,14 @@ static void try_grab(grime_loop *loop, void *ud)
 	(void)loop;
 	grime_input *in = ud;
 	for (int i = 0; i < in->nfds; i++) {
-		if (any_key_down(in->fds[i])) {
+		if (any_key_down(in->devs[i].fd)) {
 			grime_timer_arm(in->grab_timer, 20);
 			return;
 		}
 	}
 	for (int i = 0; i < in->nfds; i++)
-		if (ioctl(in->fds[i], EVIOCGRAB, 1) < 0)
-			LOG_WARN("grab fd %d: %s", in->fds[i], strerror(errno));
+		if (ioctl(in->devs[i].fd, EVIOCGRAB, 1) < 0)
+			LOG_WARN("grab %s: %s", in->devs[i].path, strerror(errno));
 	in->grabbed = true;
 	LOG_INFO("keyboard grabbed; grime is live");
 }
@@ -145,22 +155,24 @@ static void add_device(grime_input *in, const char *path, bool must_be_keyboard)
 		close(fd);
 		return;
 	}
-	char name[256] = "?";
-	ioctl(fd, EVIOCGNAME(sizeof name), name);
-	LOG_INFO("using %s (%s)", path, name);
+	grime_device *dev = &in->devs[in->nfds++];
+	*dev = (grime_device){.fd = fd};
+	snprintf(dev->path, sizeof dev->path, "%s", path);
+	snprintf(dev->name, sizeof dev->name, "?");
+	ioctl(fd, EVIOCGNAME(sizeof dev->name), dev->name);
+	LOG_INFO("using %s (%s)", dev->path, dev->name);
 	grime_loop_add_fd(in->loop, fd, GRIME_IO_READ, on_readable, in);
-	in->fds[in->nfds++] = fd;
 }
 
-grime_input *grime_input_open(grime_loop *loop, char *const *devices, size_t ndevices, bool grab,
-			      grime_input_cb cb, void *ud)
+grime_input *grime_input_open(grime_loop *loop, const grime_device_match *devices,
+			      size_t ndevices, bool grab, const grime_input_sink *sink)
 {
 	grime_input *in = calloc(1, sizeof *in);
-	*in = (grime_input){.loop = loop, .cb = cb, .ud = ud, .grab = grab};
+	*in = (grime_input){.loop = loop, .sink = *sink, .grab = grab};
 
 	for (size_t i = 0; i < ndevices; i++) {
-		if (strcmp(devices[i], "auto")) {
-			add_device(in, devices[i], false);
+		if (devices[i].path) {
+			add_device(in, devices[i].path, false);
 			continue;
 		}
 		DIR *dir = opendir("/dev/input");

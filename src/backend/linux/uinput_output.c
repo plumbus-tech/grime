@@ -69,7 +69,7 @@ grime_output *grime_output_uinput_new(void)
 		return NULL;
 	}
 	struct uinput *u = calloc(1, sizeof *u);
-	u->base = (grime_output){emit, destroy, u};
+	u->base = (grime_output){.emit = emit, .destroy = destroy, .impl = u};
 	u->fd = fd;
 	return &u->base;
 }
@@ -90,6 +90,6 @@ static void log_destroy(grime_output *out)
 grime_output *grime_output_log_new(void)
 {
 	grime_output *out = calloc(1, sizeof *out);
-	*out = (grime_output){log_emit, log_destroy, NULL};
+	*out = (grime_output){.emit = log_emit, .destroy = log_destroy};
 	return out;
 }

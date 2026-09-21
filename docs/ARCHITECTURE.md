@@ -29,8 +29,9 @@ things (processes, HTTP) are fds/timers on the loop.
 |---|---|---|
 | `event.h`    | `grime_key_event` (evdev key codes on every OS) | — |
 | `loop.h`     | fds, timers, child watching, SIGHUP | `src/core/loop.c` |
-| `input.h`    | open/grab keyboards → events | `src/backend/linux/evdev_input.c` |
-| `output.h`   | emit key events | `src/backend/linux/uinput_output.c` |
+| `device.h`   | which devices grime takes, and on what terms | `src/config/device.c` (pure policy) |
+| `input.h`    | open/grab devices → events | `src/backend/linux/evdev_input.c` |
+| `output.h`   | emit key events, replay raw ones | `src/backend/linux/uinput_output.c` |
 | `runtime.h`  | what actions can touch; `grime_emit` tracks held keys | `src/core/runtime.c` |
 | `action.h`   | action types + registry, `GRIME_REGISTER_ACTION` | `src/actions/registry.c` |
 | `engine.h`   | keymap tree + walker | `src/engine/engine.c` |

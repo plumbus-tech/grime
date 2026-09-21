@@ -18,7 +18,7 @@ static void rec_emit(grime_output *out, uint16_t code, int value)
 	strcat(rec, grime_key_name(code));
 }
 
-static grime_output rec_out = {rec_emit, NULL, NULL};
+static grime_output rec_out = {.emit = rec_emit};
 static grime_loop *loop;
 static grime_runtime rt;
 static void rt_quit(grime_runtime *r) {}

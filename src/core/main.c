@@ -98,8 +98,9 @@ static void on_timeout(grime_loop *loop, void *ud)
 }
 
 /* Physical events arrive here first. The emergency chord bypasses the keymap. */
-static void on_key(const grime_key_event *ev, void *ud)
+static void on_key(const grime_key_event *ev, grime_device *dev, void *ud)
 {
+	(void)dev;
 	(void)ud;
 	if (ev->edge != GRIME_REPEAT) {
 		bool down = ev->edge == GRIME_PRESS;
@@ -222,7 +223,8 @@ int main(int argc, char **argv)
 	app.emergency_timer = grime_timer_new(app.loop, on_emergency, NULL);
 	grime_loop_on_sighup(app.loop, on_sighup, NULL);
 
-	grime_input *in = grime_input_open(app.loop, cfg.devices, cfg.ndevices, !dry_run, on_key, NULL);
+	grime_input_sink sink = {.on_key = on_key};
+	grime_input *in = grime_input_open(app.loop, cfg.devices, cfg.ndevices, !dry_run, &sink);
 	grime_config_free(&cfg);
 	if (!in) {
 		out->destroy(out);
