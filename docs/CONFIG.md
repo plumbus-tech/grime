@@ -47,6 +47,24 @@ event at the moment a press becomes a hold — a hold is a *state*, not a moment
 Key names are evdev names lowercased (`grime --list-keys`): `a`, `1`,
 `leftshift`, `capslock`, `f13`, `kpenter`. `shift ctrl alt super` are aliases.
 
+**Mouse buttons are keys too**, and keep their evdev prefix: `btn_left`,
+`btn_right`, `btn_middle`, `btn_side`, `btn_extra`, `btn_forward`, `btn_back`,
+`btn_task`, with the friendlier `leftclick`, `rightclick`, `middleclick`,
+`click`. They work on both sides — as the thing you press and as the thing an
+action does:
+
+```json
+"btn_middle": { "do": "exec", "cmd": "xdg-open ~" },
+"capslock":   { "hold": { "btn_left": "btn_right" } },
+"f13":        "middleclick"
+```
+
+The prefix is not decoration: unprefixed, 23 button names would shadow a key —
+`BTN_LEFT` vs the left arrow, `BTN_BACK` vs `KEY_BACK`, `BTN_A` vs `a`. And
+there is deliberately **no** `mouse1`/`mouse2`/`mouse3`: X11 numbers buttons
+1=left 2=middle 3=right, evdev orders them left, right, middle, so no numbering
+reads correctly to everyone. Spell out the button you mean.
+
 An entry's name can also be:
 
 | name | means |

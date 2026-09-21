@@ -19,6 +19,12 @@ static const struct keyname aliases[] = {
 	{"super", 125},    {"meta", 125},     {"win", 125},     {"escape", 1},
 	{"return", 28},    {"del", 111},      {"ins", 110},     {"pgup", 104},
 	{"pgdn", 109},     {"caps", 58},      {"rightsuper", 126}, {"leftsuper", 125},
+	/* Mouse buttons. Deliberately no "mouse1"/"mouse2"/"mouse3": X11 numbers
+	 * them 1=left 2=middle 3=right and evdev orders them left, right, middle,
+	 * so any number is wrong for half the people reading it. */
+	{"click", 0x110},     {"leftclick", 0x110}, {"rightclick", 0x111},
+	{"middleclick", 0x112}, {"sideclick", 0x113}, {"extraclick", 0x114},
+	{"forwardclick", 0x115}, {"backclick", 0x116},
 };
 
 #define N(a) (sizeof(a) / sizeof((a)[0]))

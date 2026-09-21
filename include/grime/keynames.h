@@ -1,5 +1,7 @@
 /* keynames.h — "capslock" <-> 58. Names are evdev KEY_* names lowercased
- * without the prefix, plus a few aliases (shift, ctrl, alt, super, ...). */
+ * without the prefix, plus a few aliases (shift, ctrl, alt, super, ...).
+ * Mouse and gamepad buttons keep their prefix ("btn_left", "btn_middle"),
+ * because unprefixed they would collide with key names of their own. */
 #ifndef GRIME_KEYNAMES_H
 #define GRIME_KEYNAMES_H
 
