@@ -153,6 +153,21 @@ static void on_key(const grime_key_event *ev, grime_device *dev, void *ud)
 	grime_emit(&app.rt, ev->code, ev->edge == GRIME_PRESS ? 1 : 0);
 }
 
+/* The OS toggles caps lock by lighting the virtual keyboard; the light the user
+ * is actually looking at is on the physical one. */
+static void on_led(uint16_t led, int on, void *ud)
+{
+	grime_input_set_led(ud, led, on);
+}
+
+static void on_output_readable(grime_loop *loop, int fd, int io, void *ud)
+{
+	(void)loop;
+	(void)fd;
+	(void)io;
+	grime_output_pump(app.rt.out, on_led, ud);
+}
+
 /* A grabbed device's motion and wheel reach nobody unless grime replays them.
  * A watched one is still being read by the OS, so replaying would double it. */
 static void on_raw(uint16_t type, uint16_t code, int32_t value, grime_device *dev, void *ud)
@@ -351,6 +366,9 @@ int main(int argc, char **argv)
 	 * the node, and the desktop never sees it. */
 	if (wants_pointer || grime_input_needs_pointer(in))
 		grime_output_prepare(out);
+	int out_fd = grime_output_event_fd(out);
+	if (out_fd >= 0)
+		grime_loop_add_fd(app.loop, out_fd, GRIME_IO_READ, on_output_readable, in);
 	drop_privileges();
 
 	grime_timer *deadline = NULL;
@@ -373,6 +391,8 @@ int main(int argc, char **argv)
 	grime_loop_run(app.loop);
 
 	grime_release_all(&app.rt);
+	if (out_fd >= 0)
+		grime_loop_del_fd(app.loop, out_fd);
 	grime_input_close(in);
 	grime_timer_free(deadline);
 	grime_timer_free(app.reload_timer);

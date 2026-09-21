@@ -36,6 +36,10 @@ typedef struct {
 grime_input *grime_input_open(grime_loop *loop, const grime_device_match *devices,
 			      size_t ndevices, bool grab, const grime_input_sink *sink);
 void grime_input_close(grime_input *in); /* ungrabs */
+/* Mirror a lock light onto every device grime grabbed. Quietly does nothing
+ * for a device that was opened read-only. */
+void grime_input_set_led(grime_input *in, uint16_t led, int on);
+
 /* True if any device it opened has motion grime is now responsible for
  * replaying, i.e. a virtual pointer is needed. */
 bool grime_input_needs_pointer(const grime_input *in);

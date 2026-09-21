@@ -118,6 +118,24 @@ static void prepare(grime_output *out)
 	pointer_fd((struct uinput *)out);
 }
 
+/* uinput hands LED changes back on the same fd we write events to. */
+int grime_output_event_fd(grime_output *out)
+{
+	return out && out->emit == emit ? ((struct uinput *)out)->fd : -1;
+}
+
+void grime_output_pump(grime_output *out, grime_led_cb cb, void *ud)
+{
+	if (grime_output_event_fd(out) < 0)
+		return;
+	struct uinput *u = (struct uinput *)out;
+	struct input_event evs[16];
+	ssize_t n = read(u->fd, evs, sizeof evs);
+	for (size_t i = 0; n > 0 && i < n / sizeof evs[0]; i++)
+		if (evs[i].type == EV_LED)
+			cb(evs[i].code, evs[i].value, ud);
+}
+
 static void destroy(grime_output *out)
 {
 	struct uinput *u = (struct uinput *)out;
@@ -163,6 +181,11 @@ grime_output *grime_output_uinput_new(void)
 	ioctl(fd, UI_SET_EVBIT, EV_SYN);
 	/* so held keys autorepeat on the Linux console, where no compositor does it */
 	ioctl(fd, UI_SET_EVBIT, EV_REP);
+	/* so the OS can tell us when caps/num/scroll lock changed */
+	ioctl(fd, UI_SET_EVBIT, EV_LED);
+	ioctl(fd, UI_SET_LEDBIT, LED_NUML);
+	ioctl(fd, UI_SET_LEDBIT, LED_CAPSL);
+	ioctl(fd, UI_SET_LEDBIT, LED_SCROLLL);
 	for (int code = 1; code < KEY_MAX; code++)
 		if (!grime_is_button(code))
 			ioctl(fd, UI_SET_KEYBIT, code);

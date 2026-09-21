@@ -17,6 +17,15 @@ enum {
 	GRIME_EV_KEY = 1,
 	GRIME_EV_REL = 2,
 	GRIME_EV_ABS = 3,
+	GRIME_EV_LED = 0x11,
+};
+
+/* The lights on a keyboard, in evdev numbering. */
+enum {
+	GRIME_LED_NUM = 0,
+	GRIME_LED_CAPS = 1,
+	GRIME_LED_SCROLL = 2,
+	GRIME_LED_COUNT = 3,
 };
 
 /* Buttons share the key code space: mouse, joystick, gamepad and digitizer

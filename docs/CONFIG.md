@@ -89,6 +89,9 @@ it cannot give you a second opinion.
   it whatever acceleration profile libinput picks for pointing sticks.
 - Grabbing a device also hides its switches (lid, rfkill). grime says so when it
   does; `--list-devices` warns you beforehand.
+- Caps, num and scroll lock lights follow. The OS sets those by lighting up
+  whatever keyboard it thinks is typing, which once grime has grabbed yours is
+  grime's virtual one, so grime pushes the state back onto the real keyboard.
 
 ### Plugging things in
 

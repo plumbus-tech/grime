@@ -23,6 +23,15 @@ struct grime_output {
 	void (*prepare)(grime_output *out);
 };
 
+/* The OS sets caps/num/scroll lock by writing LED state back to whatever
+ * keyboard it thinks is typing -- which, once grime has grabbed yours, is
+ * grime's virtual one. Watch this fd and pump it when readable, or the light
+ * on the physical keyboard sits at whatever it was when grime started. -1 if
+ * this output has nothing to watch. */
+int grime_output_event_fd(grime_output *out);
+typedef void (*grime_led_cb)(uint16_t led, int on, void *ud);
+void grime_output_pump(grime_output *out, grime_led_cb cb, void *ud);
+
 /* emit_ev / prepare if the output has them, otherwise a no-op. */
 void grime_output_ev(grime_output *out, uint16_t type, uint16_t code, int32_t value);
 void grime_output_prepare(grime_output *out);

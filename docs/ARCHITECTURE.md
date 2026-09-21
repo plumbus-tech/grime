@@ -1,7 +1,8 @@
 # Architecture
 
 ```
- physical keyboard(s)
+ physical input device(s) — matched by name, id or capability (grime/device.h),
+ picked up as they are plugged in (inotify on /dev/input)
         │ /dev/input/eventN (EVIOCGRAB)
         ▼
  src/backend/linux/evdev_input.c ──► grime_key_event {code, press|release|repeat}
@@ -13,10 +14,17 @@
         │                                      ▼
         │                         src/actions/*  (registry.c looks up "do")
         │                          ├─ press/release/tap/type ─► grime_emit ─► src/backend/linux/uinput_output.c ─► OS
+        │                          │     (a virtual keyboard, plus a virtual pointer once a button or
+        │                          │      some motion needs one; lock lights come back the same way)
         │                          ├─ exec ─► posix_spawn, child reaped via the loop's signalfd
         │                          └─ http ─► libcurl multi, its sockets + timer live on the loop
+        │
+        └─ a grabbed device's non-key events (motion, wheel, SYN) are replayed
+           verbatim through the virtual pointer — grabbing the node that carries
+           btn_middle also carries REL_X/REL_Y, so dropping them freezes the cursor
         ▼
- src/core/loop.c — one epoll loop: device fds, signalfd (INT/TERM/HUP/CHLD), timerfds, curl sockets
+ src/core/loop.c — one epoll loop: device fds, inotify, uinput readback,
+                   signalfd (INT/TERM/HUP/CHLD), timerfds, curl sockets
 ```
 
 **Why single-threaded epoll:** no locks, no races between key events and

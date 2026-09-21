@@ -148,7 +148,11 @@ void grime_probe_each(bool (*fn)(const grime_probe *p, int fd, void *ud), void *
 		char path[PROBE_STR];
 		snprintf(path, sizeof path, "/dev/input/%s", names[i]);
 		free(names[i]);
-		int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+		/* read-write so lock lights can be pushed back onto the device;
+		 * read-only is still fine, it just means no lights. */
+		int fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+		if (fd < 0)
+			fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 		if (fd < 0) {
 			grime_probe p;
 			memset(&p, 0, sizeof p);

@@ -230,7 +230,9 @@ static bool try_new_node(grime_input *in, const char *path)
 	for (int i = 0; i < in->nfds; i++)
 		if (!strcmp(in->devs[i].path, path))
 			return true;
-	int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+	int fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+	if (fd < 0)
+		fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 	if (fd < 0)
 		return errno != EACCES && errno != ENOENT;
 	grime_probe p;
@@ -374,6 +376,18 @@ grime_input *grime_input_open(grime_loop *loop, const grime_device_match *device
 	}
 	watch_for_new_devices(in);
 	return in;
+}
+
+/* Writing EV_LED to a grabbed device is what actually moves its light. */
+void grime_input_set_led(grime_input *in, uint16_t led, int on)
+{
+	struct input_event ev = {.type = EV_LED, .code = led, .value = on};
+	for (int i = 0; i < in->nfds; i++) {
+		if (!in->devs[i].grabbed)
+			continue;
+		ssize_t n = write(in->devs[i].fd, &ev, sizeof ev);
+		(void)n; /* read-only fd, or a device with no such light: fine */
+	}
 }
 
 bool grime_input_needs_pointer(const grime_input *in)
