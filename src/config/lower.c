@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "grime/device.h"
 #include "grime/keynames.h"
 
 #define MAX_LAYER_DEPTH 16
@@ -18,6 +19,7 @@
 #define MAX_PATH 1024
 #define MAX_MODS 4
 #define MAX_STEPS 8
+#define N_ELEM(a) (sizeof(a) / sizeof((a)[0]))
 
 struct ctx {
 	json_object *layers;               /* every layer, this file's and its includes' */
@@ -521,6 +523,163 @@ static json_object *lower_keymap(struct ctx *c, json_object *in, const char *pat
 	return out;
 }
 
+/* ---- devices: friendly spellings -> one matcher object each ---- */
+
+static const char *const DEVICE_FIELDS[] = {"path", "name",  "phys", "uniq",     "vendor",
+					    "product", "bus", "kind", "grab", "unmatched"};
+
+/* Hex only, and only as a string: "5054" read as decimal would quietly match
+ * the wrong device, and bare 17aa is not JSON in the first place. */
+static int device_id(struct ctx *c, json_object *o, const char *field, const char *path,
+		     json_object *out)
+{
+	json_object *v = obj_get(o, field);
+	if (!v)
+		return 0;
+	const char *sv = str_of(v);
+	if (!sv)
+		return fail(c, path, "\"%s\": write it as a hex string like \"17aa\"", field);
+	const char *digits = strncmp(sv, "0x", 2) ? sv : sv + 2;
+	char *end;
+	long val = strtol(digits, &end, 16);
+	if (!*digits || *end || val < 0 || val > 0xffff)
+		return fail(c, path, "\"%s\": expected four hex digits like \"17aa\", got \"%s\"",
+			    field, sv);
+	json_object_object_add(out, field, json_object_new_string(sv));
+	return 0;
+}
+
+static int copy_glob(struct ctx *c, json_object *o, const char *field, const char *path,
+		     json_object *out, bool *any)
+{
+	json_object *v = obj_get(o, field);
+	if (!v)
+		return 0;
+	const char *sv = str_of(v);
+	if (!sv)
+		return fail(c, path, "\"%s\": expected a string", field);
+	json_object_object_add(out, field, json_object_new_string(sv));
+	*any = true;
+	return 0;
+}
+
+/* "auto" and a bare path are the two spellings that predate matchers; keep
+ * them meaning exactly what they always did. */
+static json_object *lower_device(struct ctx *c, json_object *in, const char *path)
+{
+	json_object *out = json_object_new_object();
+	bool any = false;
+	const char *s = str_of(in);
+	if (s) {
+		if (!strcmp(s, "auto")) {
+			json_object_object_add(out, "kind", json_object_new_string("keyboard"));
+		} else {
+			json_object_object_add(out, "path", json_object_new_string(s));
+		}
+		any = true;
+	} else if (json_object_is_type(in, json_type_object)) {
+		json_object_object_foreach(in, k, unused)
+		{
+			(void)unused;
+			bool known = false;
+			for (size_t i = 0; i < N_ELEM(DEVICE_FIELDS); i++)
+				known = known || !strcmp(k, DEVICE_FIELDS[i]);
+			if (!known) {
+				fail(c, path,
+				     "unknown \"%s\" (expected path, name, phys, uniq, vendor, "
+				     "product, bus, kind, grab or unmatched)",
+				     k);
+				goto bad;
+			}
+		}
+		if (copy_glob(c, in, "path", path, out, &any) < 0 ||
+		    copy_glob(c, in, "name", path, out, &any) < 0 ||
+		    copy_glob(c, in, "phys", path, out, &any) < 0 ||
+		    copy_glob(c, in, "uniq", path, out, &any) < 0)
+			goto bad;
+		if (device_id(c, in, "vendor", path, out) < 0 ||
+		    device_id(c, in, "product", path, out) < 0 ||
+		    device_id(c, in, "bus", path, out) < 0)
+			goto bad;
+		any = any || obj_get(in, "vendor") || obj_get(in, "product") || obj_get(in, "bus");
+
+		json_object *kind = obj_get(in, "kind");
+		const char *kind_s = kind ? str_of(kind) : NULL;
+		if (kind && (!kind_s || grime_device_kind_from_name(kind_s) < 0)) {
+			fail(c, path,
+			     "\"kind\": expected \"keyboard\", \"keys\", \"pointer\" or \"any\"");
+			goto bad;
+		}
+		if (kind_s)
+			any = true; /* including "any": spelling it out is the escape hatch */
+		json_object_object_add(out, "kind",
+				       json_object_new_string(kind_s ? kind_s : "any"));
+
+		json_object *un = obj_get(in, "unmatched");
+		const char *un_s = un ? str_of(un) : NULL;
+		if (un && (!un_s || (strcmp(un_s, "drop") && strcmp(un_s, "pass")))) {
+			fail(c, path, "\"unmatched\": expected \"drop\" or \"pass\"");
+			goto bad;
+		}
+		if (un_s)
+			json_object_object_add(out, "unmatched", json_object_new_string(un_s));
+
+		json_object *grab = obj_get(in, "grab");
+		if (grab && !json_object_is_type(grab, json_type_boolean)) {
+			fail(c, path, "\"grab\": expected true or false");
+			goto bad;
+		}
+		if (grab)
+			json_object_object_add(out, "grab", json_object_get(grab));
+	} else {
+		fail(c, path, "expected \"auto\", a device path, or a matcher object");
+		goto bad;
+	}
+	if (!any) {
+		fail(c, path, "matches nothing in particular -- say what you mean, or "
+			      "{\"kind\": \"any\"} if you really mean every device");
+		goto bad;
+	}
+	if (!obj_get(out, "kind"))
+		json_object_object_add(out, "kind", json_object_new_string("any"));
+	/* A pointer grime grabs must keep clicking even where the keymap says
+	 * nothing, or an unbound button is a dead mouse. */
+	if (!obj_get(out, "unmatched")) {
+		const char *k = str_of(obj_get(out, "kind"));
+		json_object_object_add(out, "unmatched",
+				       json_object_new_string(
+					       k && !strcmp(k, "pointer") ? "pass" : "drop"));
+	}
+	if (!obj_get(out, "grab"))
+		json_object_object_add(out, "grab", json_object_new_boolean(1));
+	return out;
+bad:
+	json_object_put(out);
+	return NULL;
+}
+
+static json_object *lower_devices(struct ctx *c, json_object *in)
+{
+	if (!json_object_is_type(in, json_type_array))
+		return (fail(c, "devices", "expected an array of paths or [\"auto\"]"), NULL);
+	size_t n = json_object_array_length(in);
+	if (!n)
+		return (fail(c, "devices", "empty list: grime would grab nothing. Use [\"auto\"]"),
+			NULL);
+	json_object *out = json_object_new_array();
+	for (size_t i = 0; i < n; i++) {
+		char path[64];
+		snprintf(path, sizeof path, "devices[%zu]", i);
+		json_object *d = lower_device(c, json_object_array_get_idx(in, i), path);
+		if (!d) {
+			json_object_put(out);
+			return NULL;
+		}
+		json_object_array_add(out, d);
+	}
+	return out;
+}
+
 /* ---- the root ---- */
 
 /* "base": "<layer>" fills in every key the keymap didn't mention itself. The
@@ -701,8 +860,15 @@ json_object *grime_config_lower(json_object *root, const char *path, char *err, 
 
 	out = json_object_new_object();
 	json_object *dev = obj_get(root, "devices");
-	if (dev)
-		json_object_object_add(out, "devices", json_object_get(dev));
+	if (dev) {
+		json_object *lowered = lower_devices(&c, dev);
+		if (!lowered) {
+			json_object_put(out);
+			out = NULL;
+			goto done;
+		}
+		json_object_object_add(out, "devices", lowered);
+	}
 	json_object_object_add(out, "keymap", out_km);
 	out_km = NULL;
 done:

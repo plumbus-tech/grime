@@ -234,7 +234,7 @@ TEST(the_front_end_rejects_nonsense)
 		    "must be an array"));
 	CHECK(fails("{\"keymap\": {\"a\": {\"do\": \"exec\", \"argv\": [null]}}}", "must hold strings"));
 	CHECK(fails("{\"devices\": [], \"keymap\": {\"a\": \"a\"}}", "grab nothing"));
-	CHECK(fails("{\"devices\": [null], \"keymap\": {\"a\": \"a\"}}", "device paths"));
+	CHECK(fails("{\"devices\": [null], \"keymap\": {\"a\": \"a\"}}", "matcher object"));
 	CHECK(fails("{\"keymap\": {\"a\": {\"tap\": \"b\", \"allone\": true}}}", "unknown \"allone\""));
 	CHECK(fails("{\"keymap\": {\"ctrl+x ctrl+f\": {\"do\": \"quit\"}}}", "last step"));
 	CHECK(fails("{\"keymap\": {\"a\": {\"hold\": \"nope\"}}}", "no layer named"));

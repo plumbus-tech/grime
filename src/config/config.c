@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "grime/device.h"
 #include "grime/keynames.h"
 #include "lower.h"
 
@@ -111,22 +112,55 @@ static int parse_keymap(json_object *obj, grime_node *node, const char *path, ch
 	return 0;
 }
 
-/* One entry of "devices". Today a string: "auto" is the keyboard heuristic,
- * anything else is a literal path taken as-is, with no capability filter --
- * which is exactly what the backend did before matchers existed. */
-static int parse_device(const char *s, grime_device_match *m, char *err, size_t errlen)
+/* One entry of "devices", as lower.c leaves it: an object with every default
+ * filled in. The friendly spellings ("auto", a bare path) are gone by here. */
+static int dup_str(json_object *o, const char *field, char **out, char *err, size_t errlen)
 {
-	*m = (grime_device_match){
-		.vendor = -1, .product = -1, .bus = -1, .grab = true,
-		.kind = GRIME_KIND_ANY, .unmatched = GRIME_UNMATCHED_DROP,
-	};
-	if (!strcmp(s, "auto")) {
-		m->kind = GRIME_KIND_KEYBOARD;
+	json_object *v;
+	if (!json_object_object_get_ex(o, field, &v))
 		return 0;
-	}
-	m->path = strdup(s);
-	if (!m->path)
+	*out = strdup(json_object_get_string(v));
+	if (!*out)
 		return fail(err, errlen, "devices", "out of memory");
+	return 0;
+}
+
+static int dup_id(json_object *o, const char *field, int *out)
+{
+	json_object *v;
+	if (!json_object_object_get_ex(o, field, &v))
+		return 0;
+	*out = (int)strtol(json_object_get_string(v), NULL, 16);
+	return 0;
+}
+
+static int parse_device(json_object *o, grime_device_match *m, const char *path, char *err,
+			size_t errlen)
+{
+	*m = (grime_device_match){.vendor = -1, .product = -1, .bus = -1, .grab = true};
+	if (!json_object_is_type(o, json_type_object))
+		return fail(err, errlen, path, "expected a matcher object");
+	if (dup_str(o, "path", &m->path, err, errlen) < 0 ||
+	    dup_str(o, "name", &m->name, err, errlen) < 0 ||
+	    dup_str(o, "phys", &m->phys, err, errlen) < 0 ||
+	    dup_str(o, "uniq", &m->uniq, err, errlen) < 0)
+		return -1;
+	dup_id(o, "vendor", &m->vendor);
+	dup_id(o, "product", &m->product);
+	dup_id(o, "bus", &m->bus);
+
+	json_object *v;
+	if (json_object_object_get_ex(o, "kind", &v)) {
+		int k = grime_device_kind_from_name(json_object_get_string(v));
+		if (k < 0)
+			return fail(err, errlen, path, "unknown kind");
+		m->kind = (grime_device_kind)k;
+	}
+	if (json_object_object_get_ex(o, "grab", &v))
+		m->grab = json_object_get_boolean(v);
+	if (json_object_object_get_ex(o, "unmatched", &v))
+		m->unmatched = strcmp(json_object_get_string(v), "pass") ? GRIME_UNMATCHED_DROP
+									: GRIME_UNMATCHED_PASS;
 	return 0;
 }
 
@@ -138,29 +172,26 @@ static int parse_root(json_object *root, grime_config *out, char *err, size_t er
 
 	json_object *v;
 	if (json_object_object_get_ex(root, "devices", &v)) {
-		if (!json_object_is_type(v, json_type_array))
-			return fail(err, errlen, "devices", "expected an array of paths or [\"auto\"]");
 		size_t n = json_object_array_length(v);
-		if (!n)
-			return fail(err, errlen, "devices",
-				    "empty list: grime would grab nothing. Use [\"auto\"]");
 		out->devices = calloc(n, sizeof *out->devices);
 		if (!out->devices)
 			return fail(err, errlen, "devices", "out of memory");
 		for (size_t i = 0; i < n; i++) {
-			json_object *d = json_object_array_get_idx(v, i);
-			if (!json_object_is_type(d, json_type_string))
-				return fail(err, errlen, "devices",
-					    "expected device paths or [\"auto\"]");
-			if (parse_device(json_object_get_string(d),
-					 &out->devices[out->ndevices++], err, errlen) < 0)
+			char path[64];
+			snprintf(path, sizeof path, "devices[%zu]", i);
+			if (parse_device(json_object_array_get_idx(v, i),
+					 &out->devices[out->ndevices++], path, err, errlen) < 0)
 				return -1;
 		}
 	} else {
+		/* no "devices": every keyboard-looking thing, same as ["auto"] */
 		out->devices = calloc(1, sizeof *out->devices);
 		if (!out->devices)
 			return fail(err, errlen, "devices", "out of memory");
-		parse_device("auto", &out->devices[out->ndevices++], err, errlen);
+		out->devices[out->ndevices++] = (grime_device_match){
+			.vendor = -1, .product = -1, .bus = -1, .grab = true,
+			.kind = GRIME_KIND_KEYBOARD,
+		};
 	}
 
 	if (!json_object_object_get_ex(root, "keymap", &v))

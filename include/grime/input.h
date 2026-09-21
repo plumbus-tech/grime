@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "grime/device.h"
 #include "grime/event.h"
@@ -37,5 +38,9 @@ void grime_input_close(grime_input *in); /* ungrabs */
 
 const char *grime_device_path(const grime_device *dev);
 const char *grime_device_name(const grime_device *dev);
+
+/* Print every input device, what grime makes of it, and which matcher (if any)
+ * would take it. Never opens /dev/uinput and never grabs. */
+void grime_input_list(FILE *f, const grime_device_match *devices, size_t ndevices);
 
 #endif

@@ -1,5 +1,4 @@
-/* Read (and exclusively grab) keyboards from /dev/input/event*. */
-#include <dirent.h>
+/* Read (and, for the ones a matcher says to, exclusively grab) input devices. */
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/input.h>
@@ -9,18 +8,20 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
+#include "evdev_probe.h"
 #include "grime/input.h"
 #include "grime/log.h"
 #include "grime/output.h"
 
 #define MAX_DEVICES 64
 #define NBITS(x) (((x) + 8 * sizeof(long) - 1) / (8 * sizeof(long)))
-#define TEST_BIT(bit, arr) ((arr)[(bit) / (8 * sizeof(long))] >> ((bit) % (8 * sizeof(long))) & 1)
 
 struct grime_device {
 	int fd;
 	char path[300];
 	char name[256];
+	bool grab;
+	grime_unmatched unmatched;
 };
 
 struct grime_input {
@@ -36,21 +37,6 @@ struct grime_input {
 const char *grime_device_path(const grime_device *dev) { return dev->path; }
 const char *grime_device_name(const grime_device *dev) { return dev->name; }
 
-static bool looks_like_keyboard(int fd)
-{
-	unsigned long bits[NBITS(KEY_MAX)] = {0};
-	char name[256] = "";
-	ioctl(fd, EVIOCGNAME(sizeof name), name);
-	if (!strcmp(name, GRIME_UINPUT_NAME))
-		return false; /* never read our own output */
-	if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof bits), bits) < 0)
-		return false;
-	for (int k = KEY_Q; k <= KEY_P; k++)
-		if (!TEST_BIT(k, bits))
-			return false;
-	return TEST_BIT(KEY_A, bits) && TEST_BIT(KEY_Z, bits) && TEST_BIT(KEY_SPACE, bits);
-}
-
 static bool any_key_down(int fd)
 {
 	unsigned long bits[NBITS(KEY_MAX)] = {0};
@@ -65,7 +51,7 @@ static bool any_key_down(int fd)
 /* Forget a device: off the loop, closed, and compacted out of fds[]. */
 static void drop_device(grime_input *in, int i)
 {
-	if (in->grabbed)
+	if (in->grabbed && in->devs[i].grab)
 		ioctl(in->devs[i].fd, EVIOCGRAB, 0);
 	grime_loop_del_fd(in->loop, in->devs[i].fd);
 	close(in->devs[i].fd);
@@ -125,43 +111,64 @@ static void try_grab(grime_loop *loop, void *ud)
 	(void)loop;
 	grime_input *in = ud;
 	for (int i = 0; i < in->nfds; i++) {
-		if (any_key_down(in->devs[i].fd)) {
+		if (in->devs[i].grab && any_key_down(in->devs[i].fd)) {
 			grime_timer_arm(in->grab_timer, 20);
 			return;
 		}
 	}
-	for (int i = 0; i < in->nfds; i++)
+	int n = 0;
+	for (int i = 0; i < in->nfds; i++) {
+		if (!in->devs[i].grab)
+			continue;
 		if (ioctl(in->devs[i].fd, EVIOCGRAB, 1) < 0)
 			LOG_WARN("grab %s: %s", in->devs[i].path, strerror(errno));
+		else
+			n++;
+	}
 	in->grabbed = true;
-	LOG_INFO("keyboard grabbed; grime is live");
+	LOG_INFO("grabbed %d device(s); grime is live", n);
 }
 
-static void add_device(grime_input *in, const char *path, bool must_be_keyboard)
+/* Take a device the matchers chose. The fd is ours from here. */
+static void keep_device(grime_input *in, const grime_probe *p, int fd,
+			const grime_device_match *m)
 {
 	if (in->nfds == MAX_DEVICES) {
-		LOG_WARN("more than %d devices, ignoring %s", MAX_DEVICES, path);
-		return;
-	}
-	int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-	if (fd < 0) {
-		if (!must_be_keyboard)
-			LOG_ERR("open %s: %s", path, strerror(errno));
-		else if (errno == EACCES)
-			LOG_WARN("open %s: permission denied (run with sudo or see scripts/setup-permissions.sh)", path);
-		return;
-	}
-	if (must_be_keyboard && !looks_like_keyboard(fd)) {
-		close(fd);
+		LOG_WARN("more than %d devices, ignoring %s", MAX_DEVICES, p->path);
 		return;
 	}
 	grime_device *dev = &in->devs[in->nfds++];
-	*dev = (grime_device){.fd = fd};
-	snprintf(dev->path, sizeof dev->path, "%s", path);
-	snprintf(dev->name, sizeof dev->name, "?");
-	ioctl(fd, EVIOCGNAME(sizeof dev->name), dev->name);
-	LOG_INFO("using %s (%s)", dev->path, dev->name);
+	*dev = (grime_device){.fd = fd, .grab = m->grab && in->grab, .unmatched = m->unmatched};
+	snprintf(dev->path, sizeof dev->path, "%s", p->path);
+	snprintf(dev->name, sizeof dev->name, "%s", p->name);
+	LOG_INFO("using %s (%s) [%s%s]", dev->path, dev->name,
+		 grime_device_kind_name(p->info.kind), dev->grab ? ", grabbed" : ", observing");
 	grime_loop_add_fd(in->loop, fd, GRIME_IO_READ, on_readable, in);
+}
+
+struct open_ctx {
+	grime_input *in;
+	const grime_device_match *devices;
+	size_t ndevices;
+	bool matched[MAX_DEVICES];
+};
+
+static bool consider(const grime_probe *p, int fd, void *ud)
+{
+	struct open_ctx *c = ud;
+	if (fd < 0) {
+		LOG_DEBUG("skipping %s: %s", p->path, p->name);
+		return false;
+	}
+	if (p->is_ours)
+		return false; /* never read our own output back in */
+	int i = grime_device_match_find(c->devices, c->ndevices, &p->info);
+	if (i < 0)
+		return false;
+	if (c->ndevices <= MAX_DEVICES)
+		c->matched[i] = true;
+	keep_device(c->in, p, fd, &c->devices[i]);
+	return true;
 }
 
 grime_input *grime_input_open(grime_loop *loop, const grime_device_match *devices,
@@ -170,25 +177,21 @@ grime_input *grime_input_open(grime_loop *loop, const grime_device_match *device
 	grime_input *in = calloc(1, sizeof *in);
 	*in = (grime_input){.loop = loop, .sink = *sink, .grab = grab};
 
-	for (size_t i = 0; i < ndevices; i++) {
-		if (devices[i].path) {
-			add_device(in, devices[i].path, false);
+	struct open_ctx ctx = {.in = in, .devices = devices, .ndevices = ndevices};
+	grime_probe_each(consider, &ctx);
+
+	/* A matcher that names one exact path deserves a straight answer when
+	 * nothing came back -- usually a typo or a device that isn't plugged in. */
+	for (size_t i = 0; i < ndevices && i < MAX_DEVICES; i++) {
+		if (ctx.matched[i])
 			continue;
-		}
-		DIR *dir = opendir("/dev/input");
-		struct dirent *de;
-		while (dir && (de = readdir(dir))) {
-			if (strncmp(de->d_name, "event", 5))
-				continue;
-			char path[300];
-			snprintf(path, sizeof path, "/dev/input/%s", de->d_name);
-			add_device(in, path, true);
-		}
-		if (dir)
-			closedir(dir);
+		if (devices[i].path)
+			LOG_WARN("devices[%zu]: nothing matched \"%s\"", i, devices[i].path);
+		else
+			LOG_WARN("devices[%zu]: nothing matched (see grime --list-devices)", i);
 	}
 	if (!in->nfds) {
-		LOG_ERR("no keyboards found");
+		LOG_ERR("no input devices matched; try grime --list-devices");
 		free(in);
 		return NULL;
 	}

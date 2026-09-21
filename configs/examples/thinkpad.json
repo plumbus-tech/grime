@@ -1,0 +1,29 @@
+{
+  "devices": [
+    "auto",
+    { "kind": "pointer", "name": "TPPS/2*" },
+    { "name": "ThinkPad Extra Buttons", "vendor": "17aa", "product": "5054", "grab": false }
+  ],
+
+  "include": ["../layouts/qwerty.json"],
+  "base": "qwerty",
+
+  "keymap": {
+    "capslock": {
+      "tap": "esc",
+      "hold": {
+        "h": "left", "j": "down", "k": "up", "l": "right",
+        "btn_left": "btn_right"
+      }
+    },
+
+    "btn_middle": { "do": "exec", "argv": ["notify-send", "grime", "middle click"] },
+
+    "btn_right": {
+      "tap": "btn_right",
+      "hold": {
+        "btn_left": { "do": "exec", "argv": ["notify-send", "grime", "both buttons"] }
+      }
+    }
+  }
+}

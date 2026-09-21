@@ -38,6 +38,7 @@ static void usage(FILE *f)
 		"  -n, --dry-run       don't grab or emit; log what would happen\n"
 		"      --check         validate the config and exit\n"
 		"      --expand        print the config as the tree grime walks\n"
+		"      --list-devices  print every input device and what your config would do\n"
 		"      --list-keys     print every key name\n"
 		"      --list-actions  print every action name\n"
 		"  -v, --verbose       log every step of the keymap walk\n"
@@ -157,16 +158,17 @@ static void print_action(const char *name, void *ud)
 
 int main(int argc, char **argv)
 {
-	enum { OPT_CHECK = 256, OPT_LIST_KEYS, OPT_LIST_ACTIONS, OPT_EXPAND };
+	enum { OPT_CHECK = 256, OPT_LIST_KEYS, OPT_LIST_ACTIONS, OPT_EXPAND, OPT_LIST_DEVICES };
 	static const struct option opts[] = {
 		{"config", required_argument, 0, 'c'},     {"timeout", required_argument, 0, 't'},
 		{"dry-run", no_argument, 0, 'n'},          {"verbose", no_argument, 0, 'v'},
 		{"help", no_argument, 0, 'h'},             {"check", no_argument, 0, OPT_CHECK},
 		{"list-keys", no_argument, 0, OPT_LIST_KEYS}, {"list-actions", no_argument, 0, OPT_LIST_ACTIONS},
 		{"expand", no_argument, 0, OPT_EXPAND},
+		{"list-devices", no_argument, 0, OPT_LIST_DEVICES},
 		{0},
 	};
-	bool dry_run = false, check = false, expand = false;
+	bool dry_run = false, check = false, expand = false, list_devices = false;
 	int timeout_s = 0, c;
 	app.config_path = NULL;
 	while ((c = getopt_long(argc, argv, "c:t:nvh", opts, NULL)) != -1) {
@@ -177,6 +179,7 @@ int main(int argc, char **argv)
 		case 'v': grime_log_level = GRIME_LOG_DEBUG; break;
 		case OPT_CHECK: check = true; break;
 		case OPT_EXPAND: expand = true; break;
+		case OPT_LIST_DEVICES: list_devices = true; break;
 		case OPT_LIST_KEYS: grime_key_list(stdout); return 0;
 		case OPT_LIST_ACTIONS: grime_action_list(print_action, NULL); return 0;
 		case 'h': usage(stdout); return 0;
@@ -200,8 +203,20 @@ int main(int argc, char **argv)
 
 	grime_config cfg;
 	if (grime_config_load(app.config_path, &cfg, err, sizeof err) < 0) {
-		LOG_ERR("config: %s", err);
-		return 1;
+		if (!list_devices) {
+			LOG_ERR("config: %s", err);
+			return 1;
+		}
+		/* Still worth listing: "which device is my mic-mute key on?" is
+		 * exactly the question you ask before the config is right. */
+		LOG_WARN("config: %s -- listing devices with no matchers", err);
+		grime_input_list(stdout, NULL, 0);
+		return 0;
+	}
+	if (list_devices) {
+		grime_input_list(stdout, cfg.devices, cfg.ndevices);
+		grime_config_free(&cfg);
+		return 0;
 	}
 	if (check) {
 		printf("%s: ok\n", app.config_path);

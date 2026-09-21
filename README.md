@@ -14,6 +14,9 @@ command, hit an HTTP API to toggle your lights, reload, quit.
 - No clocks anywhere: the keymap is driven purely by press and release.
 - No layouts baked in: QWERTY and Dvorak are JSON files under `configs/layouts/`,
   and so is yours.
+- Mouse buttons are keys: bind `btn_middle`, or make `capslock`+click do something.
+- Devices chosen by name, vendor:product or capability — not by an `eventN`
+  number that moves between boots. `grime --list-devices` shows you which.
 - Fully async: one epoll loop; commands and HTTP calls never stall typing.
 
 Linux first (evdev + uinput); the engine is OS-agnostic so other backends can follow.
@@ -53,5 +56,6 @@ make            # build/grime
 make test       # engine + config tests, no root needed
 make check-configs
 build/grime --expand -c configs/default.json   # what your config really means
+build/grime --list-devices                    # what grime can see, and what it would take
 build/grime --help
 ```

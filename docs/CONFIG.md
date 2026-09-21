@@ -15,14 +15,76 @@ Validate with `grime --check -c PATH`. See what it really means with
 }
 ```
 
-- `devices` — `["auto"]` (every keyboard-looking device, the default) or explicit
-  paths like `"/dev/input/by-id/usb-Keychron-event-kbd"`.
+- `devices` — which input devices to take, and on what terms. See below.
 - `include` — other JSON files to pull `layers` and `keymap` entries from.
 - `base` — the name of a layer to fill in with: every key in it types itself
   unless your keymap says otherwise. Without a base, **a key you don't mention
   does nothing**, which is occasionally what you want and usually not.
 - `keymap` — the root of the tree.
 - `layers` — keymaps with names, so you can use one in more than one place.
+
+## Devices
+
+`devices` is a list of **matchers**. A device is used if **any** entry matches
+it; within one entry **every** field you set must match; and the **first**
+entry that matches supplies that device's options.
+
+```json
+"devices": [
+  "auto",
+  "/dev/input/by-path/platform-i8042-serio-0-event-kbd",
+  { "kind": "pointer", "name": "TPPS/2*" },
+  { "name": "ThinkPad Extra Buttons", "vendor": "17aa", "product": "5054" },
+  { "path": "/dev/input/by-id/*Keychron*", "grab": false }
+]
+```
+
+| field | takes | matched against |
+|---|---|---|
+| `path` | a glob | the `/dev/input/eventN` node **and** every by-id/by-path symlink pointing at it |
+| `name` | a glob | what the device calls itself |
+| `phys`, `uniq` | a glob | its physical location / serial |
+| `vendor`, `product`, `bus` | a **hex string**, `"17aa"` | its USB/PS2 ids |
+| `kind` | `keyboard`, `keys`, `pointer`, `any` | what it can do (below) |
+| `grab` | `true` (default) / `false` | exclusive, or observe-only |
+| `unmatched` | `"drop"` / `"pass"` | what happens to a key with no binding |
+
+`"auto"` means `{"kind": "keyboard"}` and a bare path means `{"path": "..."}` —
+the two spellings that came first still mean exactly what they did.
+
+**`kind`** is what a device can do, not what it's called:
+- `keyboard` — has a full alphabet. The thing you type on.
+- `keys` — has real keys but no alphabet: a laptop's fn row, a hotkey block, a
+  macropad. **These are invisible to `"auto"`**, which is why your mic-mute and
+  brightness keys need naming before grime can see them.
+- `pointer` — buttons and relative motion: a mouse, a trackpoint.
+- `any` — no capability filter. Spell it out; an empty matcher is an error.
+
+Ids are hex strings and only hex strings, because `5054` read as decimal is a
+different device you'd find weeks later.
+
+```sh
+grime --list-devices     # every device, its kind, and which entry would take it
+```
+
+Run that before editing the list. It calls the same matcher the daemon does, so
+it cannot give you a second opinion.
+
+### Grabbed, or just watched
+
+- A device grime **grabs** is exclusive: the OS sees only what grime emits, and
+  a key with no binding does nothing (`"unmatched": "pass"` re-emits it
+  unchanged instead — the default for pointers, so an unbound button is not a
+  dead mouse).
+- A device with `"grab": false` is **observe-only**: bindings fire *in addition*
+  to what the key normally does. You can add behaviour there, never replace it.
+- grime forwards a grabbed pointer's motion and wheel through a virtual pointer
+  of its own, so the cursor keeps working. It does **not** forward absolute
+  axes, so it will not grab a touchpad or a touchscreen.
+- Forwarding a trackpoint this way loses `INPUT_PROP_POINTING_STICK`, and with
+  it whatever acceleration profile libinput picks for pointing sticks.
+- Grabbing a device also hides its switches (lid, rfkill). grime says so when it
+  does; `--list-devices` warns you beforehand.
 
 grime knows nothing about keyboard layouts. QWERTY is a layer in
 `configs/layouts/qwerty.json`, Dvorak is a layer in `configs/layouts/dvorak.json`,
@@ -203,6 +265,27 @@ and off, and says so both times:
 **A second layout** — `configs/default.json` toggles Dvorak with `capslock d`;
 the layer is 8 lines of `"physical": "what it should type"` and `pass` handles
 every key the two layouts agree on.
+
+**A ThinkPad**: `configs/examples/thinkpad.json`. Three devices, three
+different arrangements:
+```json
+"devices": [
+  "auto",
+  { "kind": "pointer", "name": "TPPS/2*" },
+  { "name": "ThinkPad Extra Buttons", "vendor": "17aa", "product": "5054", "grab": false }
+]
+```
+- the built-in keyboard, as always;
+- the TrackPoint, **grabbed**, so `btn_middle` can become something else. Its
+  motion is forwarded, and left and right still click because pointers pass
+  unmatched buttons through by default;
+- the fn-key block, **observed**. `kind` is `keys` there, not `keyboard`, so
+  `"auto"` never saw it. Not grabbed, because those keys already do useful
+  things and grabbing would also hide the rfkill switch — bindings on it add
+  behaviour rather than replacing it.
+
+Because every device feeds one keymap, holding `capslock` on the keyboard and
+clicking on the TrackPoint is a single chord.
 
 **Lights**: `configs/examples/lights.json` (Home Assistant + Hue). Export
 `HA_TOKEN` before starting grime.
