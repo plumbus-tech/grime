@@ -13,7 +13,7 @@
 #include "grime/log.h"
 #include "grime/output.h"
 
-#define MAX_DEVICES 32
+#define MAX_DEVICES 64
 #define NBITS(x) (((x) + 8 * sizeof(long) - 1) / (8 * sizeof(long)))
 #define TEST_BIT(bit, arr) ((arr)[(bit) / (8 * sizeof(long))] >> ((bit) % (8 * sizeof(long))) & 1)
 
@@ -54,6 +54,26 @@ static bool any_key_down(int fd)
 	return false;
 }
 
+/* Forget a device: off the loop, closed, and compacted out of fds[]. */
+static void drop_device(grime_input *in, int i)
+{
+	if (in->grabbed)
+		ioctl(in->fds[i], EVIOCGRAB, 0);
+	grime_loop_del_fd(in->loop, in->fds[i]);
+	close(in->fds[i]);
+	for (; i < in->nfds - 1; i++)
+		in->fds[i] = in->fds[i + 1];
+	in->nfds--;
+}
+
+static int find_fd(const grime_input *in, int fd)
+{
+	for (int i = 0; i < in->nfds; i++)
+		if (in->fds[i] == fd)
+			return i;
+	return -1;
+}
+
 static void on_readable(grime_loop *loop, int fd, int io, void *ud)
 {
 	(void)io;
@@ -64,7 +84,15 @@ static void on_readable(grime_loop *loop, int fd, int io, void *ud)
 		if (errno == EAGAIN || errno == EINTR)
 			return;
 		LOG_WARN("input device fd %d: %s, dropping it", fd, strerror(errno));
-		grime_loop_del_fd(loop, fd);
+		int i = find_fd(in, fd);
+		if (i >= 0)
+			drop_device(in, i);
+		else
+			grime_loop_del_fd(loop, fd);
+		if (!in->nfds) {
+			LOG_ERR("no input devices left, exiting");
+			grime_loop_stop(loop);
+		}
 		return;
 	}
 	if (!in->grabbed && in->grab)
@@ -101,8 +129,10 @@ static void try_grab(grime_loop *loop, void *ud)
 
 static void add_device(grime_input *in, const char *path, bool must_be_keyboard)
 {
-	if (in->nfds == MAX_DEVICES)
+	if (in->nfds == MAX_DEVICES) {
+		LOG_WARN("more than %d devices, ignoring %s", MAX_DEVICES, path);
 		return;
+	}
 	int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 	if (fd < 0) {
 		if (!must_be_keyboard)
@@ -162,12 +192,8 @@ void grime_input_close(grime_input *in)
 {
 	if (!in)
 		return;
-	for (int i = 0; i < in->nfds; i++) {
-		if (in->grabbed)
-			ioctl(in->fds[i], EVIOCGRAB, 0);
-		grime_loop_del_fd(in->loop, in->fds[i]);
-		close(in->fds[i]);
-	}
+	while (in->nfds)
+		drop_device(in, in->nfds - 1);
 	grime_timer_free(in->grab_timer);
 	free(in);
 }

@@ -137,6 +137,8 @@ static int parse_root(json_object *root, grime_config *out, char *err, size_t er
 		}
 	} else {
 		out->devices = calloc(1, sizeof(char *));
+		if (!out->devices)
+			return fail(err, errlen, "devices", "out of memory");
 		out->devices[out->ndevices++] = strdup("auto");
 	}
 

@@ -358,11 +358,9 @@ static int lower_entry(struct ctx *c, json_object *val, const char *path, json_o
 	}
 	json_object *pass_v = obj_get(val, "pass");
 	if (pass_v && json_object_get_boolean(pass_v)) {
-		if (!press) {
-			json_object_put(press);
+		if (!press)
 			return fail(c, path,
 				    "\"pass\" needs a layer (\"hold\", \"prefix\" or \"toggle\")");
-		}
 		json_object_object_add(press, "fallthrough", json_object_new_boolean(1));
 	}
 
