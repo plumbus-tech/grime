@@ -56,6 +56,26 @@ int grime_device_match_find(const grime_device_match *m, size_t n,
 	return -1;
 }
 
+static char *dup_or_null(const char *s)
+{
+	return s ? strdup(s) : NULL;
+}
+
+grime_device_match *grime_device_match_dup(const grime_device_match *m, size_t n)
+{
+	grime_device_match *out = calloc(n ? n : 1, sizeof *out);
+	if (!out)
+		return NULL;
+	for (size_t i = 0; i < n; i++) {
+		out[i] = m[i];
+		out[i].path = dup_or_null(m[i].path);
+		out[i].name = dup_or_null(m[i].name);
+		out[i].phys = dup_or_null(m[i].phys);
+		out[i].uniq = dup_or_null(m[i].uniq);
+	}
+	return out;
+}
+
 void grime_device_match_free(grime_device_match *m, size_t n)
 {
 	if (!m)

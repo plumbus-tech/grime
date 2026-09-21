@@ -65,6 +65,7 @@ different device you'd find weeks later.
 
 ```sh
 grime --list-devices     # every device, its kind, and which entry would take it
+grime --watch            # what your keys actually send, without grabbing anything
 ```
 
 Run that before editing the list. It calls the same matcher the daemon does, so
@@ -85,6 +86,18 @@ it cannot give you a second opinion.
   it whatever acceleration profile libinput picks for pointing sticks.
 - Grabbing a device also hides its switches (lid, rfkill). grime says so when it
   does; `--list-devices` warns you beforehand.
+
+### Plugging things in
+
+grime watches `/dev/input`, so a device you plug in later is matched, opened and
+grabbed on its own — it waits for *that* device's keys to be up, not everyone's.
+Unplug one and grime drops it and keeps going, waiting for it to come back.
+
+This needs read access to the new node **as the user grime is running as**. Run
+`scripts/setup-permissions.sh` once (it adds you to the `input` group) and it
+works. Under `sudo` it does not: grime opens the devices as root and then drops
+to you, so anything appearing afterwards is unreadable. grime says which node
+and why rather than going quiet.
 
 grime knows nothing about keyboard layouts. QWERTY is a layer in
 `configs/layouts/qwerty.json`, Dvorak is a layer in `configs/layouts/dvorak.json`,

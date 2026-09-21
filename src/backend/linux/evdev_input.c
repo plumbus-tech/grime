@@ -1,6 +1,7 @@
 /* Read (and, for the ones a matcher says to, exclusively grab) input devices. */
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/inotify.h>
 #include <linux/input.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +22,7 @@ struct grime_device {
 	char path[300];
 	char name[256];
 	bool grab;
+	bool grabbed; /* per device: one plugged in later grabs on its own terms */
 	bool forward; /* has motion of its own that must keep reaching the OS */
 	grime_unmatched unmatched;
 };
@@ -29,10 +31,16 @@ struct grime_input {
 	grime_loop *loop;
 	grime_input_sink sink;
 	bool grab;
-	bool grabbed;
+	grime_device_match *devices; /* our own copy: the config is freed after open */
+	size_t ndevices;
 	struct grime_device devs[MAX_DEVICES];
 	int nfds;
 	grime_timer *grab_timer;
+	int inotify_fd;
+	grime_timer *retry_timer; /* udev has not finished with a new node yet */
+	char pending[MAX_DEVICES][PROBE_STR];
+	int npending;
+	int retries;
 };
 
 const char *grime_device_path(const grime_device *dev) { return dev->path; }
@@ -54,7 +62,7 @@ static bool any_key_down(int fd)
 /* Forget a device: off the loop, closed, and compacted out of fds[]. */
 static void drop_device(grime_input *in, int i)
 {
-	if (in->grabbed && in->devs[i].grab)
+	if (in->devs[i].grabbed)
 		ioctl(in->devs[i].fd, EVIOCGRAB, 0);
 	grime_loop_del_fd(in->loop, in->devs[i].fd);
 	close(in->devs[i].fd);
@@ -86,16 +94,23 @@ static void on_readable(grime_loop *loop, int fd, int io, void *ud)
 			drop_device(in, i);
 		else
 			grime_loop_del_fd(loop, fd);
+		/* With hotplug watching, an unplugged device is something to wait
+		 * for, not a reason to quit; without it, there is nothing to wait
+		 * for and staying alive would just be a process doing nothing. */
 		if (!in->nfds) {
-			LOG_ERR("no input devices left, exiting");
-			grime_loop_stop(loop);
+			if (in->inotify_fd < 0) {
+				LOG_ERR("no input devices left, exiting");
+				grime_loop_stop(loop);
+			} else {
+				LOG_WARN("no input devices left; waiting for one to appear");
+			}
 		}
 		return;
 	}
 	int di = find_fd(in, fd);
 	grime_device *dev = di >= 0 ? &in->devs[di] : NULL;
-	if (dev && dev->grab && !in->grabbed)
-		return; /* still waiting for keys to be released */
+	if (dev && dev->grab && !dev->grabbed)
+		return; /* still waiting for this device's keys to be released */
 	for (size_t i = 0; i < n / sizeof evs[0]; i++) {
 		if (evs[i].type == EV_KEY) {
 			if (evs[i].value < 0 || evs[i].value > 2)
@@ -117,28 +132,31 @@ static void on_readable(grime_loop *loop, int fd, int io, void *ud)
 	}
 }
 
-/* Grabbing while a key is down leaves the OS thinking it's stuck, so wait. */
+/* Grabbing while a key is down leaves the OS thinking it's stuck, so wait --
+ * per device, because one plugged in later can't be made to wait for the rest. */
 static void try_grab(grime_loop *loop, void *ud)
 {
 	(void)loop;
 	grime_input *in = ud;
+	bool pending = false;
 	for (int i = 0; i < in->nfds; i++) {
-		if (in->devs[i].grab && any_key_down(in->devs[i].fd)) {
-			grime_timer_arm(in->grab_timer, 20);
-			return;
-		}
-	}
-	int n = 0;
-	for (int i = 0; i < in->nfds; i++) {
-		if (!in->devs[i].grab)
+		grime_device *d = &in->devs[i];
+		if (!d->grab || d->grabbed)
 			continue;
-		if (ioctl(in->devs[i].fd, EVIOCGRAB, 1) < 0)
-			LOG_WARN("grab %s: %s", in->devs[i].path, strerror(errno));
-		else
-			n++;
+		if (any_key_down(d->fd)) {
+			pending = true;
+			continue;
+		}
+		if (ioctl(d->fd, EVIOCGRAB, 1) < 0) {
+			LOG_WARN("grab %s: %s", d->path, strerror(errno));
+			d->grab = false; /* don't retry forever on a device that won't */
+			continue;
+		}
+		d->grabbed = true;
+		LOG_INFO("grabbed %s (%s)", d->path, d->name);
 	}
-	in->grabbed = true;
-	LOG_INFO("grabbed %d device(s); grime is live", n);
+	if (pending)
+		grime_timer_arm(in->grab_timer, 20);
 }
 
 /* Take a device the matchers chose. The fd is ours from here. */
@@ -200,11 +218,135 @@ static bool consider(const grime_probe *p, int fd, void *ud)
 	return true;
 }
 
+/* ---- hotplug ---- */
+
+/* Try one node against the matchers and keep it if it fits. Returns false if
+ * the node isn't there (or isn't ours to read) yet, which is the normal state
+ * of affairs between IN_CREATE and udev finishing with it. */
+static bool try_new_node(grime_input *in, const char *path)
+{
+	/* IN_ATTRIB fires on nodes we already hold; adding one twice would grab
+	 * it twice and read it twice. */
+	for (int i = 0; i < in->nfds; i++)
+		if (!strcmp(in->devs[i].path, path))
+			return true;
+	int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+	if (fd < 0)
+		return errno != EACCES && errno != ENOENT;
+	grime_probe p;
+	if (grime_probe_fd(fd, path, &p) < 0 || p.is_ours) {
+		close(fd);
+		return true;
+	}
+	int i = grime_device_match_find(in->devices, in->ndevices, &p.info);
+	if (i < 0) {
+		LOG_DEBUG("new device %s (%s) matches nothing", path, p.name);
+		close(fd);
+		return true;
+	}
+	keep_device(in, &p, fd, &in->devices[i]);
+	if (in->grab)
+		grime_timer_arm(in->grab_timer, 0);
+	return true;
+}
+
+/* IN_CREATE arrives before udev has chowned the node, so the first open is
+ * usually EACCES. IN_ATTRIB covers the chmod, and this covers the rest. */
+static void retry_pending(grime_loop *loop, void *ud)
+{
+	(void)loop;
+	grime_input *in = ud;
+	bool done = true;
+	for (int i = 0; i < in->npending; i++)
+		if (!try_new_node(in, in->pending[i]))
+			done = false;
+	if (done || ++in->retries >= 10) {
+		for (int i = 0; !done && i < in->npending; i++)
+			LOG_WARN("can't read %s: %s. Hotplug needs access as the user grime "
+				 "runs as -- see scripts/setup-permissions.sh. (Under sudo, "
+				 "grime drops to your user once the first devices are open, "
+				 "so later ones need the input group.)",
+				 in->pending[i], strerror(EACCES));
+		in->npending = 0;
+		in->retries = 0;
+		return;
+	}
+	grime_timer_arm(in->retry_timer, 100);
+}
+
+static void queue_node(grime_input *in, const char *name)
+{
+	char path[PROBE_STR];
+	snprintf(path, sizeof path, "/dev/input/%s", name);
+	if (try_new_node(in, path))
+		return;
+	for (int i = 0; i < in->npending; i++)
+		if (!strcmp(in->pending[i], path))
+			return;
+	if (in->npending == MAX_DEVICES)
+		return;
+	snprintf(in->pending[in->npending++], PROBE_STR, "%s", path);
+	in->retries = 0;
+	grime_timer_arm(in->retry_timer, 100);
+}
+
+static void on_inotify(grime_loop *loop, int fd, int io, void *ud)
+{
+	(void)loop;
+	(void)io;
+	grime_input *in = ud;
+	char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
+	ssize_t n = read(fd, buf, sizeof buf);
+	for (char *p = buf; n > 0 && p < buf + n;) {
+		const struct inotify_event *e = (const struct inotify_event *)p;
+		p += sizeof *e + e->len;
+		if (!e->len || strncmp(e->name, "event", 5))
+			continue;
+		if (e->mask & (IN_CREATE | IN_ATTRIB)) {
+			queue_node(in, e->name);
+		} else if (e->mask & IN_DELETE) {
+			char path[PROBE_STR];
+			snprintf(path, sizeof path, "/dev/input/%s", e->name);
+			for (int i = 0; i < in->nfds; i++)
+				if (!strcmp(in->devs[i].path, path)) {
+					LOG_INFO("%s (%s) went away", in->devs[i].path,
+						 in->devs[i].name);
+					drop_device(in, i);
+					if (!in->nfds)
+						LOG_WARN("no input devices left; waiting "
+							 "for one to appear");
+					break;
+				}
+		}
+	}
+}
+
+/* A keyboard plugged in after grime started should just start working. */
+static void watch_for_new_devices(grime_input *in)
+{
+	in->retry_timer = grime_timer_new(in->loop, retry_pending, in);
+	in->inotify_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+	if (in->inotify_fd < 0 ||
+	    inotify_add_watch(in->inotify_fd, "/dev/input",
+			      IN_CREATE | IN_ATTRIB | IN_DELETE) < 0) {
+		LOG_WARN("no hotplug: %s (devices plugged in later won't be picked up)",
+			 strerror(errno));
+		if (in->inotify_fd >= 0)
+			close(in->inotify_fd);
+		in->inotify_fd = -1;
+		return;
+	}
+	grime_loop_add_fd(in->loop, in->inotify_fd, GRIME_IO_READ, on_inotify, in);
+}
+
 grime_input *grime_input_open(grime_loop *loop, const grime_device_match *devices,
 			      size_t ndevices, bool grab, const grime_input_sink *sink)
 {
 	grime_input *in = calloc(1, sizeof *in);
-	*in = (grime_input){.loop = loop, .sink = *sink, .grab = grab};
+	*in = (grime_input){.loop = loop, .sink = *sink, .grab = grab, .inotify_fd = -1};
+	in->devices = grime_device_match_dup(devices, ndevices);
+	in->ndevices = ndevices;
+	in->grab_timer = grime_timer_new(loop, try_grab, in);
 
 	struct open_ctx ctx = {.in = in, .devices = devices, .ndevices = ndevices};
 	grime_probe_each(consider, &ctx);
@@ -221,14 +363,16 @@ grime_input *grime_input_open(grime_loop *loop, const grime_device_match *device
 	}
 	if (!in->nfds) {
 		LOG_ERR("no input devices matched; try grime --list-devices");
+		grime_timer_free(in->grab_timer);
+		grime_device_match_free(in->devices, in->ndevices);
 		free(in);
 		return NULL;
 	}
 	if (grab) {
 		LOG_INFO("waiting for all keys to be released...");
-		in->grab_timer = grime_timer_new(loop, try_grab, in);
 		grime_timer_arm(in->grab_timer, 0);
 	}
+	watch_for_new_devices(in);
 	return in;
 }
 
@@ -246,6 +390,12 @@ void grime_input_close(grime_input *in)
 		return;
 	while (in->nfds)
 		drop_device(in, in->nfds - 1);
+	if (in->inotify_fd >= 0) {
+		grime_loop_del_fd(in->loop, in->inotify_fd);
+		close(in->inotify_fd);
+	}
+	grime_timer_free(in->retry_timer);
 	grime_timer_free(in->grab_timer);
+	grime_device_match_free(in->devices, in->ndevices);
 	free(in);
 }

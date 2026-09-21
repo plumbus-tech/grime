@@ -22,12 +22,25 @@ the other person's files.
 ## Good next tasks
 
 Lane A
-- Device hotplug (inotify on `/dev/input`, grab new keyboards).
 - `exec` output capture / per-action env; `http` response → log or follow-up action.
 - Emit repeat for held synthesized keys on the Linux console (no compositor autorepeat there).
 - systemd user service + udev rule packaging.
 
 Lane B
+- Per-device keymaps: a matcher could name a layer to use as its own root, for a
+  macropad that shouldn't type letters. Today every device feeds one engine,
+  which is what makes "hold capslock, click the trackpoint" a single chord, so
+  splitting them silently breaks cross-device bindings — the opt-in has to be
+  explicit. The real cost is in `config.h`: `grime_config` has to carry named
+  keymap trees, so it needs a contract change first.
+- The scroll wheel as *input*. `REL_WHEEL` is a pulse with no release, so
+  `hold`, `tap` and `alone` have nothing to say about it, and synthetic codes
+  above `GRIME_KEY_COUNT` would break `keys[]` and `held[]`. The cheap version:
+  `btn_gear_up`/`btn_gear_down` (0x150/0x151) already live inside the key space,
+  so a per-device `"wheel": "buttons"` could translate notches in the backend
+  with no engine change at all.
+- `scroll` and `move` actions, now that `emit_ev` exists. One-shot is easy;
+  mouse-keys-style continuous motion needs a loop timer and a stop on release.
 - One-shot modifiers (sticky-for-one-key, as opposed to the `toggle` slot).
 - An action for "released after being used as a modifier" — the complement of
   `tap`. Needs `grime_binding.alone` to become a tri-state, so: contract PR first.

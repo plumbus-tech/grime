@@ -16,7 +16,8 @@ command, hit an HTTP API to toggle your lights, reload, quit.
   and so is yours.
 - Mouse buttons are keys: bind `btn_middle`, or make `capslock`+click do something.
 - Devices chosen by name, vendor:product or capability — not by an `eventN`
-  number that moves between boots. `grime --list-devices` shows you which.
+  number that moves between boots. `grime --list-devices` shows you which, and
+  `grime --watch` shows you what they send. Plug one in and it's picked up.
 - Fully async: one epoll loop; commands and HTTP calls never stall typing.
 
 Linux first (evdev + uinput); the engine is OS-agnostic so other backends can follow.

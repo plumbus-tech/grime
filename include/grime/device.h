@@ -57,6 +57,8 @@ typedef struct {
 /* Index of the first matcher that takes this device, or -1 for none. */
 int grime_device_match_find(const grime_device_match *m, size_t n,
 			    const grime_device_info *info);
+/* A deep copy, so a caller can outlive the config the matchers came from. */
+grime_device_match *grime_device_match_dup(const grime_device_match *m, size_t n);
 void grime_device_match_free(grime_device_match *m, size_t n);
 
 const char *grime_device_kind_name(grime_device_kind k);
