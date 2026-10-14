@@ -23,12 +23,68 @@ static int fail(char *err, size_t errlen, const char *path, const char *fmt, ...
 	return -1;
 }
 
-static int parse_keymap(json_object *obj, grime_node *node, const char *path, char *err,
-			size_t errlen);
+/* Each keymap object becomes one node, however many bindings lead to it:
+ * the same object placed under both ctrls, or a named layer used anywhere. */
+struct built {
+	json_object *obj;
+	grime_node *node;
+};
 
-static int parse_binding(json_object *obj, grime_binding *b, grime_edge edge, const char *path,
-			 char *err, size_t errlen)
+struct parse {
+	grime_node *root;    /* owns every node a "then" leads to */
+	json_object *layers; /* named layers, as lower.c leaves them */
+	struct built *built;
+	size_t nbuilt, cap;
+	char *err;
+	size_t errlen;
+};
+
+static int parse_keymap(struct parse *p, json_object *obj, grime_node *node, const char *path);
+
+static grime_node *built(struct parse *p, json_object *obj)
 {
+	for (size_t i = 0; i < p->nbuilt; i++)
+		if (p->built[i].obj == obj)
+			return p->built[i].node;
+	return NULL;
+}
+
+/* A "then": an inline keymap or the name of one in "layers". */
+static int parse_then(struct parse *p, json_object *v, grime_node **out, const char *path)
+{
+	const char *name = json_object_is_type(v, json_type_string) ? json_object_get_string(v)
+								     : NULL;
+	char sub[512];
+	snprintf(sub, sizeof sub, "%s", path);
+	if (name) {
+		json_object *l;
+		if (!p->layers || !json_object_object_get_ex(p->layers, name, &l))
+			return fail(p->err, p->errlen, path, "no layer named \"%s\"", name);
+		v = l;
+		snprintf(sub, sizeof sub, "layers.%s", name);
+	}
+	if ((*out = built(p, v)))
+		return 0;
+	if (p->nbuilt == p->cap) {
+		size_t cap = p->cap ? p->cap * 2 : 32;
+		struct built *b = realloc(p->built, cap * sizeof *b);
+		if (!b)
+			return fail(p->err, p->errlen, path, "out of memory");
+		p->built = b;
+		p->cap = cap;
+	}
+	if (!(*out = grime_node_new_in(p->root)))
+		return fail(p->err, p->errlen, path, "out of memory");
+	/* known before it is filled in, so it can lead back to itself */
+	p->built[p->nbuilt++] = (struct built){v, *out};
+	return parse_keymap(p, v, *out, sub);
+}
+
+static int parse_binding(struct parse *p, json_object *obj, grime_binding *b, grime_edge edge,
+			 const char *path)
+{
+	char *err = p->err;
+	size_t errlen = p->errlen;
 	if (!json_object_is_type(obj, json_type_object))
 		return fail(err, errlen, path, "expected an object like {\"do\": ...} or {\"then\": {...}}");
 
@@ -78,8 +134,7 @@ static int parse_binding(json_object *obj, grime_binding *b, grime_edge edge, co
 	if (json_object_object_get_ex(obj, "then", &v)) {
 		char sub[512];
 		snprintf(sub, sizeof sub, "%s.then", path);
-		b->then = grime_node_new();
-		if (parse_keymap(v, b->then, sub, err, errlen) < 0)
+		if (parse_then(p, v, &b->then, sub) < 0)
 			return -1;
 	}
 	if ((b->exit == GRIME_EXIT_TOGGLE || b->exit == GRIME_EXIT_MODE) && !b->then)
@@ -95,9 +150,10 @@ static int parse_binding(json_object *obj, grime_binding *b, grime_edge edge, co
 	return 0;
 }
 
-static int parse_keymap(json_object *obj, grime_node *node, const char *path, char *err,
-			size_t errlen)
+static int parse_keymap(struct parse *p, json_object *obj, grime_node *node, const char *path)
 {
+	char *err = p->err;
+	size_t errlen = p->errlen;
 	if (!json_object_is_type(obj, json_type_object))
 		return fail(err, errlen, path, "expected an object of key names");
 
@@ -124,7 +180,9 @@ static int parse_keymap(json_object *obj, grime_node *node, const char *path, ch
 			else
 				return fail(err, errlen, esub, "expected \"press\" or \"release\"");
 			grime_binding *b = grime_node_bind(node, code, edge);
-			if (parse_binding(spec, b, edge, esub, err, errlen) < 0)
+			if (!b)
+				return fail(err, errlen, esub, "out of memory");
+			if (parse_binding(p, spec, b, edge, esub) < 0)
 				return -1;
 		}
 	}
@@ -279,8 +337,14 @@ static int parse_root(json_object *root, grime_config *out, char *err, size_t er
 	if (!json_object_object_get_ex(root, "keymap", &v))
 		return fail(err, errlen, "config", "missing \"keymap\"");
 	out->keymap = grime_node_new();
-	out->wants_pointer = mentions_button(v);
-	return parse_keymap(v, out->keymap, "keymap", err, errlen);
+	if (!out->keymap)
+		return fail(err, errlen, "keymap", "out of memory");
+	struct parse p = {.root = out->keymap, .err = err, .errlen = errlen};
+	json_object_object_get_ex(root, "layers", &p.layers);
+	out->wants_pointer = mentions_button(v) || (p.layers && mentions_button(p.layers));
+	int rc = parse_keymap(&p, v, out->keymap, "keymap");
+	free(p.built);
+	return rc;
 }
 
 static int finish(json_object *root, const char *path, grime_config *out, char *err,

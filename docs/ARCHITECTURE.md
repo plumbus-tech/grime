@@ -52,7 +52,10 @@ things (processes, HTTP) are fds/timers on the loop.
 friendly syntax (slots, key paths, chords, named layers, `base`) into one
 canonical shape; `config.c` turns only that into the tree. So the sugar can
 never mean something the tree can't say, and `grime --expand` shows you the
-result.
+result. It is really a graph: a named layer stays a name in the canonical shape,
+and `config.c` builds one node per keymap object, so a layer used under many
+keys (or under both ctrls) is one node. The root owns every such node
+(`grime_node_new_in`), which is what lets a layer lead back to itself.
 
 **No layouts in the code.** QWERTY and Dvorak are layers in
 `configs/layouts/*.json`; `"base": "<layer>"` seeds the root from one of them.

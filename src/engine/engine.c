@@ -39,6 +39,9 @@ struct entry {
 struct grime_node {
 	struct entry *entries;
 	size_t n, cap;
+	bool shared;       /* made with grime_node_new_in: its owner frees it */
+	grime_node **owned; /* what grime_node_new_in made for this one */
+	size_t nowned, owned_cap;
 };
 
 grime_node *grime_node_new(void)
@@ -46,25 +49,51 @@ grime_node *grime_node_new(void)
 	return calloc(1, sizeof(grime_node));
 }
 
+grime_node *grime_node_new_in(grime_node *owner)
+{
+	if (owner->nowned == owner->owned_cap) {
+		size_t cap = owner->owned_cap ? owner->owned_cap * 2 : 8;
+		grime_node **p = realloc(owner->owned, cap * sizeof *p);
+		if (!p)
+			return NULL;
+		owner->owned = p;
+		owner->owned_cap = cap;
+	}
+	grime_node *node = calloc(1, sizeof(grime_node));
+	if (!node)
+		return NULL;
+	node->shared = true;
+	owner->owned[owner->nowned++] = node;
+	return node;
+}
+
 static void binding_free(grime_binding *b)
 {
 	if (!b)
 		return;
 	grime_action_free(b->action);
-	grime_node_free(b->then);
+	if (b->then && !b->then->shared)
+		grime_node_free(b->then);
 	free(b);
 }
 
-void grime_node_free(grime_node *node)
+static void node_free(grime_node *node)
 {
-	if (!node)
-		return;
 	for (size_t i = 0; i < node->n; i++) {
 		binding_free(node->entries[i].press);
 		binding_free(node->entries[i].release);
 	}
 	free(node->entries);
+	for (size_t i = 0; i < node->nowned; i++)
+		node_free(node->owned[i]);
+	free(node->owned);
 	free(node);
+}
+
+void grime_node_free(grime_node *node)
+{
+	if (node)
+		node_free(node);
 }
 
 static struct entry *find(const grime_node *node, uint16_t code)

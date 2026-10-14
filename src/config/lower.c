@@ -14,7 +14,6 @@
 #include "grime/device.h"
 #include "grime/keynames.h"
 
-#define MAX_LAYER_DEPTH 16
 #define MAX_INCLUDES 64
 #define MAX_PATH 1024
 #define MAX_MODS 4
@@ -23,9 +22,10 @@
 #define N_ELEM(a) (sizeof(a) / sizeof((a)[0]))
 
 struct ctx {
-	json_object *layers;               /* every layer, this file's and its includes' */
-	const char *open[MAX_LAYER_DEPTH]; /* layer names being expanded, for cycles */
-	int nopen;
+	json_object *layers; /* every layer, this file's and its includes' */
+	/* the named layers something uses, each lowered once; null while it is
+	 * being lowered, so one that leads back to itself finds its own name */
+	json_object *lowered;
 	char included[MAX_INCLUDES][MAX_PATH]; /* files already pulled in, for cycles */
 	int nincluded;
 	char *err;
@@ -251,7 +251,8 @@ static json_object *lower_action(struct ctx *c, json_object *v, const char *path
 	return action_copy(v, false);
 }
 
-/* A layer slot: an inline keymap, or the name of one from "layers". */
+/* A layer slot: an inline keymap, or the name of one from "layers", which
+ * stays a name: every use of it is the same layer. */
 static json_object *resolve_layer(struct ctx *c, json_object *v, const char *path)
 {
 	const char *s = str_of(v);
@@ -262,21 +263,16 @@ static json_object *resolve_layer(struct ctx *c, json_object *v, const char *pat
 		fail(c, path, "no layer named \"%s\" in \"layers\"", s);
 		return NULL;
 	}
-	for (int i = 0; i < c->nopen; i++)
-		if (!strcmp(c->open[i], s)) {
-			fail(c, path, "layer \"%s\" contains itself", s);
+	if (!json_object_object_get_ex(c->lowered, s, NULL)) {
+		char sub[512];
+		snprintf(sub, sizeof sub, "layers.%s", s);
+		json_object_object_add(c->lowered, s, NULL);
+		json_object *r = lower_keymap(c, l, sub);
+		if (!r)
 			return NULL;
-		}
-	if (c->nopen == MAX_LAYER_DEPTH) {
-		fail(c, path, "layers nested deeper than %d", MAX_LAYER_DEPTH);
-		return NULL;
+		json_object_object_add(c->lowered, s, r);
 	}
-	char sub[512];
-	snprintf(sub, sizeof sub, "layers.%s", s);
-	c->open[c->nopen++] = s;
-	json_object *r = lower_keymap(c, l, sub);
-	c->nopen--;
-	return r;
+	return json_object_new_string(s);
 }
 
 /* Fills `entry` with the canonical {"press": …, "release": …}. */
@@ -434,6 +430,20 @@ static json_object *ensure_frame(struct ctx *c, json_object *dest, const char *n
 		if (!then || (obj_get(press, "do") != NULL) != chord) {
 			fail(c, path, "\"%s\" is already bound to something else here", k);
 			return NULL;
+		}
+		const char *name = str_of(then);
+		if (name) { /* more keys for a named layer: this use gets its own copy */
+			json_object *l = obj_get(c->lowered, name), *copy = NULL;
+			if (!l) {
+				fail(c, path, "can't add keys to layer \"%s\" from inside it", name);
+				return NULL;
+			}
+			if (json_object_deep_copy(l, &copy, NULL) < 0) {
+				fail(c, path, "out of memory");
+				return NULL;
+			}
+			json_object_object_add(press, "then", copy);
+			then = copy;
 		}
 		return then;
 	}
@@ -892,6 +902,7 @@ json_object *grime_config_lower(json_object *root, const char *path, char *err, 
 
 	json_object *layers = json_object_new_object(), *keymap = json_object_new_object();
 	json_object *out = NULL, *out_km = NULL;
+	c.lowered = json_object_new_object();
 	if (gather(&c, root, dir, layers, keymap, path ? path : "config", true) < 0)
 		goto done;
 	if (!obj_get(root, "keymap")) {
@@ -944,7 +955,12 @@ json_object *grime_config_lower(json_object *root, const char *path, char *err, 
 	}
 	json_object_object_add(out, "keymap", out_km);
 	out_km = NULL;
+	if (json_object_object_length(c.lowered)) {
+		json_object_object_add(out, "layers", c.lowered);
+		c.lowered = NULL;
+	}
 done:
+	json_object_put(c.lowered);
 	json_object_put(out_km);
 	json_object_put(layers);
 	json_object_put(keymap);

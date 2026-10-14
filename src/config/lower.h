@@ -4,8 +4,12 @@
  * ("rightalt x f"), chords ("ctrl+f") and named layers. The tree parser in
  * config.c only ever sees the canonical form:
  *
- *   {"<key>": {"press":   {"do":…, "then":{…}, "exit":…, "fallthrough":…},
- *              "release": {"do":…, "alone":…}}}
+ *   {"keymap": {"<key>": {"press":   {"do":…, "then":{…}, "exit":…, "fallthrough":…},
+ *                         "release": {"do":…, "alone":…}}},
+ *    "layers": {"<name>": {…}}}
+ *
+ * A named layer stays a name ("then": "<name>"), lowered once under "layers",
+ * so every use of it is the same layer and it may lead back to itself.
  *
  * `grime --expand` prints the result, so the sugar is never a black box. */
 #ifndef GRIME_LOWER_H

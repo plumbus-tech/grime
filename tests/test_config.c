@@ -175,6 +175,25 @@ TEST(named_layers_can_be_reused)
 		    "+down -down +j -j"));
 }
 
+TEST(a_layer_can_lead_back_to_itself)
+{
+	static const char *cfg = "{\"base\": \"qwerty\", \"layers\": {" QWERTY ","
+				 "   \"a\": {\"j\": \"down\", \"f14\": {\"leave\": true, \"mode\": \"b\"}},"
+				 "   \"b\": {\"j\": \"up\", \"f14\": {\"leave\": true, \"mode\": \"a\"}}},"
+				 " \"keymap\": {\"f13\": {\"mode\": \"a\"}}}";
+	CHECK(emits(cfg, "+f13 -f13 +j -j +f14 -f14 +j -j +f14 -f14 +j -j",
+		    "+down -down +up -up +down -down"));
+}
+
+TEST(keys_added_to_a_named_layer_stay_with_that_use)
+{
+	static const char *cfg = "{\"base\": \"qwerty\", \"layers\": {" QWERTY ", \"nav\": {\"j\": \"down\"}},"
+				 " \"keymap\": {\"capslock\": {\"hold\": \"nav\"},"
+				 "   \"capslock l\": \"right\", \"f13\": {\"hold\": \"nav\"}}}";
+	CHECK(emits(cfg, "+capslock +l -l +j -j -capslock", "+right -right +down -down"));
+	CHECK(emits(cfg, "+f13 +l -l +j -j -f13", "+down -down"));
+}
+
 TEST(chord_shorthand_holds_its_modifiers)
 {
 	/* "ctrl+z" as a value behaves like the real chord: mods down first, up last */
@@ -239,9 +258,6 @@ TEST(the_front_end_rejects_nonsense)
 	CHECK(fails("{\"keymap\": {\"a\": {\"tap\": \"b\", \"allone\": true}}}", "unknown \"allone\""));
 	CHECK(fails("{\"keymap\": {\"ctrl+x ctrl+f\": {\"do\": \"quit\"}}}", "last step"));
 	CHECK(fails("{\"keymap\": {\"a\": {\"hold\": \"nope\"}}}", "no layer named"));
-	CHECK(fails("{\"layers\": {\"x\": {\"a\": {\"hold\": \"x\"}}},"
-		    " \"keymap\": {\"b\": {\"hold\": \"x\"}}}",
-		    "contains itself"));
 	CHECK(fails("{\"keymap\": {\"a\": \"a\"}, \"colour\": \"red\"}", "unknown \"colour\""));
 	CHECK(fails("{\"base\": 5, \"keymap\": {}}", "name of a layer"));
 	CHECK(fails("{\"keymap\": {}, \"include\": \"x.json\"}", "array of file paths"));
@@ -261,6 +277,8 @@ int main(void)
 	RUN(a_held_key_does_not_cancel_a_prefix);
 	RUN(a_hold_layer_outlives_a_layer_released_beneath_it);
 	RUN(named_layers_can_be_reused);
+	RUN(a_layer_can_lead_back_to_itself);
+	RUN(keys_added_to_a_named_layer_stay_with_that_use);
 	RUN(chord_shorthand_holds_its_modifiers);
 	RUN(include_pulls_in_layouts_from_other_files);
 	RUN(the_front_end_rejects_nonsense);
