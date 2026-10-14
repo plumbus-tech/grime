@@ -43,8 +43,12 @@ static void write_event(int fd, int type, int code, int value)
 /* grime_is_button() spells these ranges as plain numbers; assert here, where
  * the kernel's names are in scope, that the two agree. */
 _Static_assert(BTN_MISC == 0x100 && KEY_OK == 0x160 && BTN_DPAD_UP == 0x220 &&
-		       BTN_GRIPR2 == 0x227 && BTN_TRIGGER_HAPPY == 0x2c0 && KEY_MAX == 0x2ff,
+		       BTN_TRIGGER_HAPPY == 0x2c0 && KEY_MAX == 0x2ff,
 	       "grime_is_button() in grime/event.h is out of step with the kernel");
+/* the grip buttons are newer than some distributions' kernel headers */
+#ifdef BTN_GRIPR2
+_Static_assert(BTN_GRIPR2 == 0x227, "grime_is_button() in grime/event.h is out of step with the kernel");
+#endif
 
 /* The pointer only exists once something needs it, so a keyboard-only config
  * never puts a phantom mouse in the desktop's settings panel. The fd and its
