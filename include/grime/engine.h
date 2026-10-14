@@ -31,7 +31,9 @@ typedef struct grime_binding {
 	 * this layer. No frame is pushed; each lookup follows the held chord keys
 	 * through each layer, and the ones it follows are consumed (grime/runtime.h). */
 	bool chord;
-	bool leave; /* press only: end the layer this binding was found in */
+	/* press only: end the layer this binding was found in; with a mode, that
+	 * mode starts in its place */
+	bool leave;
 	bool on;    /* toggle only: on from the start */
 	/* Equal and nonzero for bindings written once and placed twice ("ctrl+x"
 	 * lands under both ctrls), so they toggle as one. */
