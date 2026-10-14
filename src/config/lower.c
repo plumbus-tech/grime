@@ -381,9 +381,9 @@ static int lower_entry(struct ctx *c, json_object *val, const char *path, json_o
 	}
 	json_object *leave_v = obj_get(val, "leave");
 	if (leave_v && json_object_get_boolean(leave_v)) {
-		if (layer_v) {
+		if (layer_v && strcmp(layer_slot, "mode")) {
 			json_object_put(press);
-			return fail(c, path, "\"leave\" ends a layer, so it can't start one");
+			return fail(c, path, "\"leave\" can only start a \"mode\" in its place");
 		}
 		if (!press)
 			press = json_object_new_object();

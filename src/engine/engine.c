@@ -18,7 +18,8 @@
  *                    from wherever that binding is reachable.
  *       EXIT_MODE    as a toggle, but a non-modifier press it does not define
  *                    also ends it, then goes on to the layers below.
- *     A "leave" binding ends the layer it was found in.
+ *     A "leave" binding ends the layer it was found in; one with a mode
+ *     starts that mode in its place.
  *  5. "alone" release bindings only fire if no other key was pressed after
  *     this one was pressed (a key already down does not count).
  * The walk is driven purely by press/release events: no timers, no clocks. */
@@ -395,6 +396,8 @@ static bool on_press(grime_engine *e, uint16_t code)
 
 	if (b->exit == GRIME_EXIT_TOGGLE || b->exit == GRIME_EXIT_MODE) {
 		fire(e, b, code, "press", h.consumed, h.nconsumed); /* both ways, so "do" can announce it */
+		if (b->leave && h.layer > 0) /* one mode for another */
+			remove_frame(e, h.layer);
 		int on = find_frame(e, b);
 		LOG_INFO("%s: %s %s", grime_key_name(code),
 			 b->exit == GRIME_EXIT_MODE ? "mode" : "toggle", on > 0 ? "off" : "on");

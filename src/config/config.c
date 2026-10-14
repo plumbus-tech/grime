@@ -88,8 +88,8 @@ static int parse_binding(json_object *obj, grime_binding *b, grime_edge edge, co
 		return fail(err, errlen, path, "\"on\" only works on a toggle");
 	if (b->chord && !b->then)
 		return fail(err, errlen, path, "\"chord\" needs a \"then\" keymap");
-	if (b->leave && b->then)
-		return fail(err, errlen, path, "\"leave\" ends a layer, so it can't start one");
+	if (b->leave && b->then && b->exit != GRIME_EXIT_MODE)
+		return fail(err, errlen, path, "\"leave\" can only start a \"mode\" in its place");
 	if (!b->action && !b->then && !b->leave)
 		return fail(err, errlen, path, "needs \"do\" and/or \"then\"");
 	return 0;
