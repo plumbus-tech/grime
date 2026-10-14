@@ -151,7 +151,7 @@ static void run(grime_runtime *rt, void *state)
 		LOG_INFO("exec (dry run): %s", s->argv[s->argv[1] && !strcmp(s->argv[1], "-c") ? 2 : 0]);
 		return;
 	}
-	if (rt->child_uid >= 0) {
+	if (rt->child_env) {
 		pid_t pid = spawn_as(rt, s->argv);
 		if (pid < 0)
 			return;

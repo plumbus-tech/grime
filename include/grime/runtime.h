@@ -36,7 +36,7 @@ struct grime_runtime {
 
 	const uint8_t *down; /* physical keys held right now; may be NULL */
 	uint16_t key;        /* the key whose press or release runs the current action */
-	/* Who exec'd children run as and with what environment. uid < 0 means as
+	/* Who exec'd children run as and with what environment. No env means as
 	 * grime itself, with its environment. */
 	int child_uid, child_gid;
 	char **child_env;
