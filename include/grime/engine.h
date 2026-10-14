@@ -41,7 +41,12 @@ typedef struct grime_binding {
 } grime_binding;
 
 grime_node *grime_node_new(void);
-void grime_node_free(grime_node *node); /* recursive; frees actions too */
+/* A node `owner` frees along with itself. Any number of bindings under
+ * `owner` may point at it, including its own, so layers can be shared and
+ * lead back to themselves. */
+grime_node *grime_node_new_in(grime_node *owner);
+/* Recursive through nodes made with grime_node_new; frees actions too. */
+void grime_node_free(grime_node *node);
 /* Returns the (zeroed on creation) binding slot for (code, edge). */
 grime_binding *grime_node_bind(grime_node *node, uint16_t code, grime_edge edge);
 grime_binding *grime_node_lookup(const grime_node *node, uint16_t code, grime_edge edge);
