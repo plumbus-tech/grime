@@ -198,6 +198,30 @@ TEST(the_emacs_example_edits_text)
 			    "+leftalt +leftshift -leftalt -leftshift +leftctrl +home -home -leftctrl"));
 }
 
+TEST(the_emacs_example_marks_and_searches)
+{
+	/* C-g drops the highlight at the end the first motion went to */
+	CHECK(example_emits("+leftctrl +space -space +f -f +g -g -leftctrl",
+			    "+leftctrl -leftctrl +leftshift +right -right -leftshift +right -right"));
+	CHECK(example_emits("+leftctrl +space -space +b -b +f -f +g -g -leftctrl",
+			    "+leftctrl -leftctrl +leftshift +left -left -leftshift "
+			    "+leftshift +right -right -leftshift +left -left"));
+	/* nothing selected yet: C-g just ends it */
+	CHECK(example_emits("+leftctrl +space -space +g -g -leftctrl", "+leftctrl -leftctrl"));
+	/* C-x h selects all; C-g leaves the cursor at the top */
+	CHECK(example_emits("+leftctrl +x -x -leftctrl +h -h +leftctrl +g -g -leftctrl",
+			    "+leftctrl -leftctrl +leftctrl +a -a -leftctrl +leftctrl -leftctrl +left -left"));
+	CHECK(example_emits("+leftctrl +x -x +s -s -leftctrl",
+			    "+leftctrl -leftctrl +leftctrl +s -s -leftctrl"));
+	/* C-s C-s RET: find, find next, done */
+	CHECK(example_emits("+leftctrl +s -s +s -s -leftctrl +enter -enter +leftctrl +s -s -leftctrl",
+			    "+leftctrl -leftctrl +leftctrl +f -f -leftctrl +f3 -f3 +esc -esc "
+			    "+leftctrl -leftctrl +leftctrl +f -f -leftctrl"));
+	CHECK(example_emits("+leftctrl +t -t -leftctrl",
+			    "+leftctrl -leftctrl +leftshift +right -right -leftshift +leftctrl +x -x "
+			    "-leftctrl +left -left +leftctrl +v -v -leftctrl +right -right"));
+}
+
 TEST(a_mode_is_switched_off_by_its_own_key)
 {
 	grime_engine *e = load("{\"keymap\": {\"x\": \"x\", \"f13\": {\"mode\": {\"x\": \"y\"}}}}");
@@ -223,8 +247,8 @@ TEST(new_slots_say_what_is_wrong)
 {
 	CHECK(config_fails("{\"keymap\": {\"a\": {\"hold\": {}, \"on\": true}}}",
 			   "\"on\" only works with \"toggle\""));
-	CHECK(config_fails("{\"keymap\": {\"a\": {\"mode\": {}, \"leave\": true}}}",
-			   "can't start one"));
+	CHECK(config_fails("{\"keymap\": {\"a\": {\"hold\": {}, \"leave\": true}}}",
+			   "can only start a \"mode\""));
 	CHECK(config_fails("{\"keymap\": {\"a\": {\"mode\": {}, \"toggle\": {}}}}",
 			   "can't both be on one key"));
 }
@@ -244,6 +268,7 @@ int main(void)
 	RUN(a_mode_is_switched_off_by_its_own_key);
 	RUN(new_slots_say_what_is_wrong);
 	RUN(the_emacs_example_edits_text);
+	RUN(the_emacs_example_marks_and_searches);
 	grime_engine_free(eng);
 	grime_loop_free(loop);
 	return DONE();

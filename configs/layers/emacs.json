@@ -11,8 +11,23 @@
       "alt+v": "pageup",
       "alt+f": "ctrl+right",
       "alt+b": "ctrl+left",
+      "alt+a": "ctrl+up",
+      "alt+e": "ctrl+down",
+      "alt+shift+leftbrace": "ctrl+up",
+      "alt+shift+rightbrace": "ctrl+down",
+      "alt+m": "home",
       "alt+shift+comma": "ctrl+home",
       "alt+shift+dot": "ctrl+end",
+      "alt+g": { "prefix": { "g": "ctrl+g", "alt+g": "ctrl+g" } },
+
+      "ctrl+shift+a": "shift+home",
+      "ctrl+shift+e": "shift+end",
+      "ctrl+shift+f": "shift+right",
+      "ctrl+shift+b": "shift+left",
+      "ctrl+shift+n": "shift+down",
+      "ctrl+shift+p": "shift+up",
+      "alt+shift+f": "ctrl+shift+right",
+      "alt+shift+b": "ctrl+shift+left",
 
       "ctrl+d": "delete",
       "ctrl+h": "backspace",
@@ -24,43 +39,121 @@
       "ctrl+o": { "do": "seq", "actions": [
         { "do": "tap", "key": "enter" },
         { "do": "tap", "key": "left" } ] },
+      "ctrl+t": { "do": "seq", "actions": [
+        { "do": "tap", "key": "right", "mods": ["leftshift"] },
+        { "do": "tap", "key": "x", "mods": ["leftctrl"] },
+        { "do": "tap", "key": "left" },
+        { "do": "tap", "key": "v", "mods": ["leftctrl"] },
+        { "do": "tap", "key": "right" } ] },
+      "ctrl+j": "enter",
+      "ctrl+m": "enter",
+      "ctrl+i": "tab",
+      "ctrl+leftbrace": "esc",
+      "alt+semicolon": "ctrl+slash",
 
       "ctrl+w": "ctrl+x",
       "alt+w": "ctrl+c",
       "ctrl+y": "ctrl+v",
       "ctrl+slash": "ctrl+z",
       "ctrl+shift+minus": "ctrl+z",
+      "ctrl+shift+slash": "ctrl+shift+z",
       "ctrl+g": "esc",
+
+      "ctrl+s": { "toggle": "isearch", "pass": true, "press": "ctrl+f" },
+      "ctrl+r": { "toggle": "isearch", "pass": true, "press": "ctrl+f" },
+      "alt+shift+5": "ctrl+h",
+
+      "ctrl+x": { "prefix": {
+        "h": { "press": "ctrl+a", "mode": "markb" },
+        "u": "ctrl+z",
+        "k": "ctrl+w",
+        "left": "ctrl+pageup",
+        "right": "ctrl+pagedown",
+        "ctrl+s": "ctrl+s",
+        "ctrl+w": "ctrl+shift+s",
+        "ctrl+f": "ctrl+o",
+        "ctrl+c": "ctrl+q"
+      } },
 
       "ctrl+space": { "mode": "mark" }
     },
 
-    "mark": {
-      "ctrl+a": "shift+home",
-      "ctrl+e": "shift+end",
-      "ctrl+f": "shift+right",
-      "ctrl+b": "shift+left",
-      "ctrl+n": "shift+down",
-      "ctrl+p": "shift+up",
-      "ctrl+v": "shift+pagedown",
-      "alt+v": "shift+pageup",
-      "alt+f": "ctrl+shift+right",
-      "alt+b": "ctrl+shift+left",
-      "alt+shift+comma": "ctrl+shift+home",
-      "alt+shift+dot": "ctrl+shift+end",
-      "left": "shift+left",
-      "right": "shift+right",
-      "up": "shift+up",
-      "down": "shift+down",
-      "home": "shift+home",
-      "end": "shift+end",
-      "pageup": "shift+pageup",
-      "pagedown": "shift+pagedown",
+    "isearch": {
+      "ctrl+s": "f3",
+      "ctrl+r": "shift+f3",
+      "enter": { "press": "esc", "leave": true },
+      "esc": { "press": "esc", "leave": true },
+      "ctrl+g": { "press": "esc", "leave": true }
+    },
 
-      "ctrl+w": { "do": "tap", "key": "x", "mods": ["leftctrl"], "leave": true },
-      "alt+w": { "do": "tap", "key": "c", "mods": ["leftctrl"], "leave": true },
+    "mark": {
+      "ctrl+f": { "press": "shift+right", "leave": true, "mode": "markf" },
+      "ctrl+e": { "press": "shift+end", "leave": true, "mode": "markf" },
+      "ctrl+n": { "press": "shift+down", "leave": true, "mode": "markf" },
+      "ctrl+v": { "press": "shift+pagedown", "leave": true, "mode": "markf" },
+      "alt+f": { "press": "ctrl+shift+right", "leave": true, "mode": "markf" },
+      "alt+e": { "press": "ctrl+shift+down", "leave": true, "mode": "markf" },
+      "alt+shift+dot": { "press": "ctrl+shift+end", "leave": true, "mode": "markf" },
+
+      "ctrl+b": { "press": "shift+left", "leave": true, "mode": "markb" },
+      "ctrl+a": { "press": "shift+home", "leave": true, "mode": "markb" },
+      "ctrl+p": { "press": "shift+up", "leave": true, "mode": "markb" },
+      "alt+v": { "press": "shift+pageup", "leave": true, "mode": "markb" },
+      "alt+b": { "press": "ctrl+shift+left", "leave": true, "mode": "markb" },
+      "alt+a": { "press": "ctrl+shift+up", "leave": true, "mode": "markb" },
+      "alt+shift+comma": { "press": "ctrl+shift+home", "leave": true, "mode": "markb" },
+      "alt+m": { "press": "shift+home", "leave": true, "mode": "markb" },
+
+      "ctrl+w": { "press": "ctrl+x", "leave": true },
+      "alt+w": { "press": "ctrl+c", "leave": true },
       "ctrl+g": { "leave": true },
       "ctrl+space": { "leave": true }
+    },
+
+    "markf": {
+      "ctrl+f": "shift+right",
+      "ctrl+e": "shift+end",
+      "ctrl+n": "shift+down",
+      "ctrl+v": "shift+pagedown",
+      "alt+f": "ctrl+shift+right",
+      "alt+e": "ctrl+shift+down",
+      "alt+shift+dot": "ctrl+shift+end",
+      "ctrl+b": "shift+left",
+      "ctrl+a": "shift+home",
+      "ctrl+p": "shift+up",
+      "alt+v": "shift+pageup",
+      "alt+b": "ctrl+shift+left",
+      "alt+a": "ctrl+shift+up",
+      "alt+shift+comma": "ctrl+shift+home",
+      "alt+m": "shift+home",
+
+      "ctrl+w": { "press": "ctrl+x", "leave": true },
+      "alt+w": { "press": "ctrl+c", "leave": true },
+      "ctrl+g": { "press": "right", "leave": true },
+      "ctrl+space": { "press": "right", "leave": true }
+    },
+
+    "markb": {
+      "ctrl+f": "shift+right",
+      "ctrl+e": "shift+end",
+      "ctrl+n": "shift+down",
+      "ctrl+v": "shift+pagedown",
+      "alt+f": "ctrl+shift+right",
+      "alt+e": "ctrl+shift+down",
+      "alt+shift+dot": "ctrl+shift+end",
+      "ctrl+b": "shift+left",
+      "ctrl+a": "shift+home",
+      "ctrl+p": "shift+up",
+      "alt+v": "shift+pageup",
+      "alt+b": "ctrl+shift+left",
+      "alt+a": "ctrl+shift+up",
+      "alt+shift+comma": "ctrl+shift+home",
+      "alt+m": "shift+home",
+
+      "ctrl+w": { "press": "ctrl+x", "leave": true },
+      "alt+w": { "press": "ctrl+c", "leave": true },
+      "ctrl+g": { "press": "left", "leave": true },
+      "ctrl+space": { "press": "left", "leave": true }
     }
   }
 }

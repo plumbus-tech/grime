@@ -193,11 +193,12 @@ The value is either a **key to behave like**, or an object of **slots**:
 | `press` | an action | fires on press |
 | `do` + params | — | the same as `press`, just shorter |
 | `pass` | `true` | keys the layer doesn't define fall back to the keymap outside it |
-| `leave` | `true` | after this binding fires, the layer it is in ends |
+| `leave` | `true` | after this binding fires, the layer it is in ends; with `mode`, that mode starts in its place |
 | `on` | `true` | with `toggle`: the layer starts switched on |
 
 One layer slot per key, and `tap` and `release` are mutually exclusive.
-`leave` can stand alone (`"ctrl+g": {"leave": true}`) or ride along with an action.
+`leave` can stand alone (`"ctrl+g": {"leave": true}`) or ride along with an action,
+and the only layer slot it takes is `mode`.
 Otherwise they combine freely: `{"tap": …, "hold": …}` is the classic
 home-row mod, and `{"toggle": …, "do": …}` announces itself as it flips.
 
@@ -225,7 +226,9 @@ An **action** is `{"do": "...", ...}`, or a string: `"esc"` taps that key,
 4. Key repeat events are ignored; the OS autorepeats held output keys itself.
 5. There is no notion of time anywhere in the keymap.
 
-`grime --expand` prints the tree these rules actually run on.
+`grime --expand` prints the tree these rules actually run on. A named layer is
+copied wherever it is used, so a layer can't lead back to itself, and one used
+under many keys multiplies the tree.
 
 ## Several files
 
@@ -302,24 +305,51 @@ and off, and says so both times:
 - Two uses of one named layer are two *independent* toggles.
 
 **Emacs keys in every text field**: `configs/examples/emacs.json` includes
-`configs/layers/emacs.json` — C-a/C-e/C-f/C-b/C-n/C-p, M-f/M-b, M-</M->,
-C-v/M-v, C-d, C-h, M-d, M-DEL, C-k, C-o, C-w/M-w/C-y, C-/ and C-g — and turns
-it on at start with `ctrl+capslock` to switch it off and on again:
+`configs/layers/emacs.json` and turns it on at start with `ctrl+capslock` to
+switch it off and on again:
 ```json
 "ctrl+capslock": { "toggle": "emacs", "pass": true, "on": true }
 ```
 The toggle isn't inside the layer, but `pass` reaches it: with Ctrl held,
 `capslock` falls through the emacs layer's ctrl to the root's.
+
+| keys | send |
+|---|---|
+| C-f C-b C-n C-p, C-a C-e, C-v M-v | arrows, Home/End, Page Down/Up |
+| M-f M-b, M-< M->, M-m | word right/left, top/bottom, Home |
+| M-a M-e, M-{ M-} | Ctrl+Up/Down (the nearest thing to sentence and paragraph) |
+| C-S-f C-S-b C-S-n C-S-p C-S-a C-S-e, M-S-f M-S-b | the same motions, selecting |
+| C-d C-h, M-d M-DEL | Delete, Backspace, and by word |
+| C-k, C-o, C-t | cut to end of line, open line, transpose characters |
+| C-w M-w C-y | cut, copy, paste |
+| C-/ C-_, C-? | undo, redo (Ctrl+Shift+Z) |
+| C-j C-m, C-i, C-[, M-; | Enter, Tab, Esc, Ctrl+/ (comment) |
+| C-s C-r | find; again for next/previous (F3, Shift+F3); RET, Esc or C-g closes it |
+| M-%, M-g g | replace (Ctrl+H), go to line (Ctrl+G) |
+| C-x h, C-x u, C-x k | select all, undo, close tab |
+| C-x C-s, C-x C-w, C-x C-f, C-x C-c | save, save as, open, quit |
+| C-x ←/→ | previous/next tab |
+| C-g | Esc |
+
 - **C-SPC** starts a `mode` where motion selects: `ctrl+f` becomes Shift+Right,
   `alt+f` Ctrl+Shift+Right, and so on. `C-w` cuts and `M-w` copies the
-  selection and end the mode; `C-g` or C-SPC again just end it; any other key
-  ends it and goes through, so typing replaces the selection as usual.
+  selection and end the mode. `C-g` or C-SPC again drop the selection, at the
+  end the first motion went to (a bare Right or Left); any other key ends it and
+  goes through, so typing replaces the selection and an arrow moves as usual.
+  After `C-x h`, `C-g` leaves the cursor at the top.
+- The first motion picks `markf` or `markb` with `{"leave": true, "mode": …}`:
+  one mode for another.
 - grime can't see which window has focus, so the layer is everywhere. Turn it
   off for a terminal or Emacs with `ctrl+capslock`.
 - C-k is Shift+End, then cut: at the end of a line there is nothing to select,
-  so it does not join lines the way Emacs does.
+  so it does not join lines the way Emacs does. C-t goes through the clipboard.
+- The search layer stays on until RET, Esc or C-g; click away instead and the
+  next C-s is F3, find next.
+- Not here, for want of a key every app agrees on: M-t, M-u/M-l/M-c, M-y, M-z,
+  M-q, C-l, C-u, M-x, C-x C-x, C-S-DEL, rectangles and keyboard macros.
 - The app shortcuts these keys replace (select all, find, new window, print,
-  close tab, menu accelerators on Alt) are gone while the layer is on.
+  close tab, the command palette on C-S-p, menu accelerators on Alt) are gone
+  while the layer is on.
 
 **kat**, the pick-by-code grid (needs root; see Safety for `--user`):
 ```json
