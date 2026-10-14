@@ -214,11 +214,12 @@ static void remove_frame(grime_engine *e, int d)
 	e->depth--;
 }
 
-/* Modes above `layer` were passed over: they end. */
-static void end_modes_above(grime_engine *e, int layer)
+/* Modes above `layer` were passed over: they end. The one `b` pushed is
+ * left for `b` to switch off. */
+static void end_modes_above(grime_engine *e, int layer, const grime_binding *b)
 {
 	for (int d = e->depth - 1; d > layer; d--)
-		if (exit_of(&e->stack[d]) == GRIME_EXIT_MODE)
+		if (exit_of(&e->stack[d]) == GRIME_EXIT_MODE && !same_binding(e->stack[d].via, b))
 			remove_frame(e, d);
 }
 
@@ -374,7 +375,7 @@ static bool on_press(grime_engine *e, uint16_t code)
 		ks->node = ks->layer = e->stack[e->depth - 1].node;
 		pop_prefixes(e); /* like emacs: an undefined key cancels the prefix */
 		if (!grime_is_modifier(code))
-			end_modes_above(e, 0);
+			end_modes_above(e, 0, NULL);
 		return false;
 	}
 	const grime_binding *b = h.b;
@@ -390,7 +391,7 @@ static bool on_press(grime_engine *e, uint16_t code)
 		return true;
 	}
 	if (!grime_is_modifier(code))
-		end_modes_above(e, h.layer);
+		end_modes_above(e, h.layer, b);
 
 	if (b->exit == GRIME_EXIT_TOGGLE || b->exit == GRIME_EXIT_MODE) {
 		fire(e, b, code, "press", h.consumed, h.nconsumed); /* both ways, so "do" can announce it */

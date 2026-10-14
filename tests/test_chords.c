@@ -198,6 +198,14 @@ TEST(the_emacs_example_edits_text)
 			    "+leftalt +leftshift -leftalt -leftshift +leftctrl +home -home -leftctrl"));
 }
 
+TEST(a_mode_is_switched_off_by_its_own_key)
+{
+	grime_engine *e = load("{\"keymap\": {\"x\": \"x\", \"f13\": {\"mode\": {\"x\": \"y\"}}}}");
+	feed(e, "+f13 -f13 +x -x +f13 -f13 +x -x");
+	CHECK(!strcmp(rec, "+y -y +x -x"));
+	grime_engine_free(e);
+}
+
 static bool config_fails(const char *json, const char *needle)
 {
 	grime_config cfg;
@@ -233,6 +241,7 @@ int main(void)
 	RUN(a_key_the_mode_lacks_ends_it_and_goes_through);
 	RUN(a_modifier_alone_does_not_end_a_mode);
 	RUN(leave_ends_the_layer_it_is_in);
+	RUN(a_mode_is_switched_off_by_its_own_key);
 	RUN(new_slots_say_what_is_wrong);
 	RUN(the_emacs_example_edits_text);
 	grime_engine_free(eng);
