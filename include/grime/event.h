@@ -38,6 +38,14 @@ static inline bool grime_is_button(uint16_t code)
 	       (code >= 0x2c0 && code < 0x2ff);
 }
 
+/* Ctrl, Shift, Alt and Meta, either side. A modifier on its own never ends a
+ * layer that ends on an unbound key. */
+static inline bool grime_is_modifier(uint16_t code)
+{
+	return code == 29 || code == 97 || code == 42 || code == 54 || code == 56 ||
+	       code == 100 || code == 125 || code == 126;
+}
+
 typedef enum {
 	GRIME_RELEASE = 0,
 	GRIME_PRESS = 1,

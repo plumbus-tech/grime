@@ -18,6 +18,7 @@ typedef enum {
 	GRIME_EXIT_RELEASE, /* leave the child when the key that entered it is released */
 	GRIME_EXIT_ACTION,  /* leave after the first action fires inside it (emacs prefix) */
 	GRIME_EXIT_TOGGLE,  /* stay until the same binding is pressed again; survives other pops */
+	GRIME_EXIT_MODE,    /* stay while its keys are used; a key it lacks ends it and goes below */
 } grime_exit_mode;
 
 typedef struct grime_binding {
@@ -26,6 +27,15 @@ typedef struct grime_binding {
 	grime_exit_mode exit;
 	bool fallthrough; /* unmatched presses in the child try the parent */
 	bool alone;       /* release only: fire only if no other key was pressed meanwhile */
+	/* A modifier: "then" is the keymap for keys pressed while it is held, in
+	 * this layer. No frame is pushed; each lookup follows the held chord keys
+	 * through each layer, and the ones it follows are consumed (grime/runtime.h). */
+	bool chord;
+	bool leave; /* press only: end the layer this binding was found in */
+	bool on;    /* toggle only: on from the start */
+	/* Equal and nonzero for bindings written once and placed twice ("ctrl+x"
+	 * lands under both ctrls), so they toggle as one. */
+	uintptr_t id;
 } grime_binding;
 
 grime_node *grime_node_new(void);
