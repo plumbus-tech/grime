@@ -16,8 +16,10 @@
         │                          ├─ press/release/tap/type ─► grime_emit ─► src/backend/linux/uinput_output.c ─► OS
         │                          │     (a virtual keyboard, plus a virtual pointer once a button or
         │                          │      some motion needs one; lock lights come back the same way)
-        │                          ├─ exec ─► posix_spawn, child reaped via the loop's signalfd
-        │                          └─ http ─► libcurl multi, its sockets + timer live on the loop
+        │                          ├─ exec ─► posix_spawn (or fork + setuid under --user), reaped via signalfd
+        │                          ├─ http ─► libcurl multi, its sockets + timer live on the loop
+        │                          └─ kat  ─► libkat on a worker thread, fed over a pipe; while
+        │                                     its grid is up it holds the keyboard (capture)
         │
         └─ a grabbed device's non-key events (motion, wheel, SYN) are replayed
            verbatim through the virtual pointer — grabbing the node that carries
@@ -64,7 +66,21 @@ carry over to macOS/Windows backends unchanged (new dir under `src/backend/`).
 
 **Privileges:** reading `/dev/input` needs root or the `input` group. Under
 sudo, grime opens the devices then drops to `$SUDO_UID` so `exec` actions run
-as you.
+as you. With `--user NAME` it stays root — kat borrows the compositor's display
+to draw on — and `exec` forks, drops to NAME and runs in NAME's session.
+
+**Capture:** an action can take the keyboard (`rt->capture`). Every press then
+goes to it instead of the keymap, and so does every release whose press it got;
+a release whose press the keymap had still goes to the keymap, so pairs stay
+paired. What the capture doesn't want it hands back with `rt->feed`, in order.
+kat uses this: libkat sleeps while it glides and clicks, so it runs on a thread
+of its own and the loop only writes key events to it and reads its answers.
+
+**Chords:** a chord key pushes no layer. Each lookup follows the held chord
+keys inside each live layer, deepest first, and the modifiers it walks through
+are *consumed*: `grime_emit` lets them go at the output before the binding's
+first press and puts them back before the next key that doesn't use them
+(`runtime.c`).
 
 **Reload:** `SIGHUP` or the `reload` action parse the file into a new tree
 (on a 0 ms timer, never mid-walk), release any held output keys, and swap.

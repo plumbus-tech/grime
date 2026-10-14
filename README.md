@@ -19,6 +19,11 @@ command, hit an HTTP API to toggle your lights, reload, quit.
   number that moves between boots. `grime --list-devices` shows you which, and
   `grime --watch` shows you what they send. Plug one in and it's picked up.
 - Fully async: one epoll loop; commands and HTTP calls never stall typing.
+- Emacs keys in every text field: `configs/layers/emacs.json`, with C-SPC
+  selecting as it moves. A chord uses its modifiers up, so `ctrl+a` → Home is
+  a bare Home.
+- [kat](https://github.com/Krevera/kat)'s pick-by-code grid as an action:
+  `"capslock": {"do": "kat"}`.
 
 Linux first (evdev + uinput); the engine is OS-agnostic so other backends can follow.
 
@@ -45,6 +50,15 @@ normal typing), plus
 - `tab` tap → Tab; hold `tab` + `f` → Firefox, `+c` → caps lock
 
 `scripts/setup-permissions.sh` (once, then re-login) lets you run without sudo.
+
+## Install
+
+```sh
+make && sudo make install                # binary, layouts/layers in /usr/local/share/grime, the unit
+mkdir -p ~/.config/grime && cp configs/examples/emacs.json ~/.config/grime/config.json
+# point its includes at /usr/local/share/grime/..., then:
+sudo systemctl enable --now grime@$USER  # root, so kat can draw; commands run as you
+```
 
 ## Docs
 - [docs/CONFIG.md](docs/CONFIG.md) — the config format and every action

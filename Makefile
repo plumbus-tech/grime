@@ -52,11 +52,32 @@ check-configs: $(BUILD)/grime
 		echo "$$f: ok"; \
 	done
 
+PREFIX  ?= /usr/local
+
+# Layouts and layers go to $(PREFIX)/share/grime for configs to include. The
+# service is installed, not enabled: systemctl enable --now grime@<you>.
+install: $(BUILD)/grime
+	install -Dm755 $(BUILD)/grime $(DESTDIR)$(PREFIX)/bin/grime
+	install -d $(DESTDIR)$(PREFIX)/share/grime/layouts $(DESTDIR)$(PREFIX)/share/grime/layers
+	install -m644 configs/layouts/*.json $(DESTDIR)$(PREFIX)/share/grime/layouts/
+	install -m644 configs/layers/*.json $(DESTDIR)$(PREFIX)/share/grime/layers/
+	install -Dm644 systemd/grime@.service $(DESTDIR)/etc/systemd/system/grime@.service
+	install -Dm644 systemd/grime-uinput.conf $(DESTDIR)/etc/modules-load.d/grime-uinput.conf
+ifeq ($(DESTDIR),)
+	systemctl daemon-reload
+endif
+
+uninstall:
+	rm -f $(DESTDIR)$(PREFIX)/bin/grime
+	rm -rf $(DESTDIR)$(PREFIX)/share/grime
+	rm -f $(DESTDIR)/etc/systemd/system/grime@.service
+	rm -f $(DESTDIR)/etc/modules-load.d/grime-uinput.conf
+
 fmt:
 	clang-format -i $(SRCS) $(wildcard include/grime/*.h tests/*.c tests/*.h)
 
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all test check-configs fmt clean
+.PHONY: all test check-configs install uninstall fmt clean
 -include $(OBJS:.o=.d)

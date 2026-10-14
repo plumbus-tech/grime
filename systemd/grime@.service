@@ -1,0 +1,12 @@
+[Unit]
+Description=grime keymap for %i
+
+[Service]
+# Root, for actions that draw over the desktop; commands run as %i.
+ExecStart=/usr/local/bin/grime --user %i -c /home/%i/.config/grime/config.json
+# The emergency exit and the quit action end it with 0 and it stays down.
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

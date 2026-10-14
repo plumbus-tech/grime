@@ -158,6 +158,14 @@ An entry's name can also be:
 Entries that share a prefix merge, so `"ctrl+f"` and `"ctrl+t"` build one ctrl
 layer between them.
 
+**A chord uses its modifiers up.** `"ctrl+a": "home"` sends a bare Home, not
+Ctrl+Home: grime lets go of Ctrl at the output just before the binding's first
+key, and presses it again before the next key that doesn't use it up, if you are
+still holding it. Hold Ctrl and press `a`, `e`, `s`, and the app sees Home, End
+and Ctrl+S. A modifier the chord doesn't name is left alone, so Shift held
+through `ctrl+a` still selects. Binding a chord to the same chord
+(`"ctrl+w": "ctrl+x"`) works as you would expect.
+
 ## What a key does
 
 The value is either a **key to behave like**, or an object of **slots**:
@@ -179,13 +187,17 @@ The value is either a **key to behave like**, or an object of **slots**:
 | `hold` | a keymap | that keymap applies while this key is held |
 | `prefix` | a keymap | Emacs style: applies until one action fires, or an undefined key cancels it |
 | `toggle` | a keymap | sticky: applies until this same binding is pressed again |
+| `mode` | a keymap | applies while you use it: a key it doesn't define ends it, then does what it would have done without it |
 | `tap` | an action | fires on release, only if nothing else was pressed meanwhile |
 | `release` | an action | fires on release, always |
 | `press` | an action | fires on press |
 | `do` + params | — | the same as `press`, just shorter |
 | `pass` | `true` | keys the layer doesn't define fall back to the keymap outside it |
+| `leave` | `true` | after this binding fires, the layer it is in ends |
+| `on` | `true` | with `toggle`: the layer starts switched on |
 
 One layer slot per key, and `tap` and `release` are mutually exclusive.
+`leave` can stand alone (`"ctrl+g": {"leave": true}`) or ride along with an action.
 Otherwise they combine freely: `{"tap": …, "hold": …}` is the classic
 home-row mod, and `{"toggle": …, "do": …}` announces itself as it flips.
 
@@ -196,13 +208,20 @@ An **action** is `{"do": "...", ...}`, or a string: `"esc"` taps that key,
 
 1. A **press** is looked up in the innermost live layer (and, with `pass`, the
    ones outside it). No match → nothing happens, and an Emacs prefix is cancelled.
+   In each layer, the modifiers you are holding are followed first: with Ctrl
+   down, `a` is looked up under that layer's `ctrl`, then in the layer itself.
+   So `pass` holds for chords too — a layer that defines `ctrl+f` still lets
+   `ctrl+t` fall through to whatever `ctrl+t` means outside it — and a layer
+   that comes or goes while Ctrl is held sees that Ctrl.
 2. A **release** is looked up in the keymap where that key's **press** was
    handled, so press and release stay paired even if the layers changed in
    between.
 3. Live layers are a **set, not a path**. Each one leaves on its own terms — a
    `hold` layer when its key comes up, a `prefix` when an action fires or an
-   undefined key cancels it, a `toggle` when you press it again — and layers
-   outside it coming and going don't disturb it.
+   undefined key cancels it, a `toggle` when you press it again, a `mode` when
+   you press a key it doesn't define (a modifier on its own doesn't count) or
+   it again — and layers outside it coming and going don't disturb it. A
+   `leave` binding ends the layer it was found in.
 4. Key repeat events are ignored; the OS autorepeats held output keys itself.
 5. There is no notion of time anywhere in the keymap.
 
@@ -246,6 +265,7 @@ layout the same way, point `base` at it, and grime never has to know it exists.
 | `log`     | `msg` | print to grime's log |
 | `reload`  | | re-read the config file |
 | `quit`    | | exit and give the keyboard back |
+| `kat`     | `mode` (`left_click`, `grab_release`, `right_click`), `settings` (path to kat's settings file), `trigger` | open kat's pick-by-code grid; the key bound to it is the grid's trigger. Built when libkat is installed |
 
 `grime --list-actions` prints what your build has.
 
@@ -275,11 +295,40 @@ and off, and says so both times:
 }
 ```
 - `pass` is what lets `ctrl+s` still reach the app as `ctrl+s`.
-- Ctrl is really held while the override runs, so an `exec` or `http` is fine
-  but a `tap` becomes another ctrl chord (`ctrl+f` → `ctrl+l`).
+- Ctrl is used up by the chord, so `"ctrl+f": "f1"` sends a bare F1; write
+  `"ctrl+f": "ctrl+l"` if you want another ctrl chord.
 - A toggle survives whatever you turned it on from: capslock can come back up
   and the override stays. Turn it off with the same path.
 - Two uses of one named layer are two *independent* toggles.
+
+**Emacs keys in every text field**: `configs/examples/emacs.json` includes
+`configs/layers/emacs.json` — C-a/C-e/C-f/C-b/C-n/C-p, M-f/M-b, M-</M->,
+C-v/M-v, C-d, C-h, M-d, M-DEL, C-k, C-o, C-w/M-w/C-y, C-/ and C-g — and turns
+it on at start with `ctrl+capslock` to switch it off and on again:
+```json
+"ctrl+capslock": { "toggle": "emacs", "pass": true, "on": true }
+```
+The toggle isn't inside the layer, but `pass` reaches it: with Ctrl held,
+`capslock` falls through the emacs layer's ctrl to the root's.
+- **C-SPC** starts a `mode` where motion selects: `ctrl+f` becomes Shift+Right,
+  `alt+f` Ctrl+Shift+Right, and so on. `C-w` cuts and `M-w` copies the
+  selection and end the mode; `C-g` or C-SPC again just end it; any other key
+  ends it and goes through, so typing replaces the selection as usual.
+- grime can't see which window has focus, so the layer is everywhere. Turn it
+  off for a terminal or Emacs with `ctrl+capslock`.
+- C-k is Shift+End, then cut: at the end of a line there is nothing to select,
+  so it does not join lines the way Emacs does.
+- The app shortcuts these keys replace (select all, find, new window, print,
+  close tab, menu accelerators on Alt) are gone while the layer is on.
+
+**kat**, the pick-by-code grid (needs root; see Safety for `--user`):
+```json
+"capslock": { "do": "kat", "settings": "/etc/kat/config.json" }
+```
+Capslock opens the grid and closes it again. While the grid is up, or a drag
+waits for its drop, every key goes to kat; grime takes the keyboard back when
+the pick ends. Hold Left Alt or Right Alt as you press it for a drag or a
+right click, as kat's settings say.
 
 **A second layout** — `configs/default.json` toggles Dvorak with `capslock d`;
 the layer is 8 lines of `"physical": "what it should type"` and `pass` handles
@@ -323,6 +372,11 @@ quickly means "s inside a's layer", not "as".
   from another machine, is all you have. grime says so loudly at startup.
 - `--timeout SEC` auto-exits. `--dry-run` logs without grabbing or emitting.
 - grime waits for all keys to be released before grabbing.
+- `--user NAME` keeps grime root after it opens the devices — kat needs that
+  to draw over the desktop — and runs `exec` commands as NAME, with NAME's
+  session environment (`XDG_RUNTIME_DIR`, the session bus, `WAYLAND_DISPLAY`,
+  `DISPLAY`; whatever grime itself was started with wins). Without it, grime
+  started under `sudo` drops to you once the devices are open.
 - `grime --list-devices` and `grime --watch` never grab and never emit. Reach
   for `--watch` when you want to know what a key sends before binding it.
 - grime refuses to grab a device with absolute axes (touchpads, touchscreens),
