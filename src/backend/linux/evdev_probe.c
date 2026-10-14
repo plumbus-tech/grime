@@ -96,9 +96,13 @@ int grime_probe_fd(int fd, const char *path, grime_probe *p)
 	if (p->has_rel)
 		ioctl(fd, EVIOCGBIT(EV_REL, sizeof rels), rels);
 
+	/* grime's own devices, and the kat action's keyboard and pointer, which
+	 * live in this process too */
 	p->is_ours = !strcmp(p->name, GRIME_UINPUT_NAME) ||
 		     !strcmp(p->name, GRIME_UINPUT_POINTER_NAME) ||
-		     (id.bustype == BUS_VIRTUAL && id.vendor == 0x6772);
+		     (id.bustype == BUS_VIRTUAL && id.vendor == 0x6772) ||
+		     (id.bustype == BUS_VIRTUAL && id.vendor == 0x1209 &&
+		      (id.product == 0xc4eb || id.product == 0xc4ee));
 
 	grime_device_kind kind = GRIME_KIND_ANY;
 	if (has_key && has_alphabet(keys))

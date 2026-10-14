@@ -32,6 +32,10 @@ static struct {
 	/* a release is passed through only if its press was, so pairs stay paired
 	 * even when the keymap changed in between */
 	uint8_t passed[GRIME_KEY_COUNT];
+	/* the keymap got this key's press, so it gets the release, captured or not */
+	uint8_t keymap_has[GRIME_KEY_COUNT];
+	grime_capture_fn capture;
+	void *capture_ud;
 } app;
 
 static void usage(FILE *f)
@@ -41,6 +45,8 @@ static void usage(FILE *f)
 		"  -c, --config PATH   config file (default: $XDG_CONFIG_HOME/grime/config.json)\n"
 		"  -t, --timeout SEC   exit automatically after SEC seconds (safety net while testing)\n"
 		"  -n, --dry-run       don't grab or emit; log what would happen\n"
+		"  -u, --user NAME     stay root (for actions that need it) and run exec'd\n"
+		"                      commands as NAME, in NAME's session\n"
 		"      --check         validate the config and exit\n"
 		"      --expand        print the config as the tree grime walks\n"
 		"      --list-devices  print every input device and what your config would do\n"
@@ -51,6 +57,8 @@ static void usage(FILE *f)
 		"  -h, --help\n"
 		"Emergency exit: hold Esc + Backspace, or all three mouse buttons, for 1 second.\n");
 }
+
+static void to_keymap(const grime_key_event *ev, grime_device *dev);
 
 static void do_reload(grime_loop *loop, void *ud)
 {
@@ -85,6 +93,30 @@ static void rt_quit(grime_runtime *rt)
 	(void)rt;
 	LOG_INFO("quit");
 	grime_loop_stop(app.loop);
+}
+
+static void rt_capture(grime_runtime *rt, grime_capture_fn fn, void *ud)
+{
+	(void)rt;
+	app.capture = fn;
+	app.capture_ud = ud;
+}
+
+static void rt_uncapture(grime_runtime *rt)
+{
+	(void)rt;
+	app.capture = NULL;
+	app.capture_ud = NULL;
+}
+
+/* Handed back by a capture: the device it came from may be gone by now, so it
+ * gets no unmatched-key policy of its own. */
+static void rt_feed(grime_runtime *rt, const grime_key_event *ev)
+{
+	(void)rt;
+	if (ev->code < GRIME_KEY_COUNT && ev->edge != GRIME_REPEAT)
+		app.keymap_has[ev->code] = ev->edge == GRIME_PRESS;
+	to_keymap(ev, NULL);
 }
 
 static void on_sighup(grime_loop *loop, int sig, void *ud)
@@ -129,7 +161,8 @@ static bool emergency_held(void)
 	       all_down(buttons, sizeof buttons / sizeof buttons[0]);
 }
 
-/* Physical events arrive here first. The emergency chords bypass the keymap. */
+/* Physical events arrive here first. The emergency chords bypass the keymap,
+ * then an action holding the keyboard gets it. */
 static void on_key(const grime_key_event *ev, grime_device *dev, void *ud)
 {
 	(void)ud;
@@ -140,6 +173,25 @@ static void on_key(const grime_key_event *ev, grime_device *dev, void *ud)
 		else
 			grime_timer_disarm(app.emergency_timer);
 	}
+	if (ev->code >= GRIME_KEY_COUNT || ev->edge == GRIME_REPEAT) {
+		if (!app.capture)
+			to_keymap(ev, dev);
+		return;
+	}
+	if (app.capture && (ev->edge == GRIME_PRESS || !app.keymap_has[ev->code])) {
+		app.capture(&app.rt, ev, false, app.capture_ud);
+		return;
+	}
+	bool captured = app.capture != NULL;
+	app.keymap_has[ev->code] = ev->edge == GRIME_PRESS;
+	to_keymap(ev, dev);
+	if (captured && app.capture)
+		app.capture(&app.rt, ev, true, app.capture_ud);
+}
+
+/* The keymap's half of a key event, and what happens when it has no binding. */
+static void to_keymap(const grime_key_event *ev, grime_device *dev)
+{
 	if (grime_engine_feed(app.engine, ev) || ev->edge == GRIME_REPEAT)
 		return;
 
@@ -202,6 +254,61 @@ static void drop_privileges(void)
 		exit(1);
 	}
 	LOG_INFO("dropped root, running as %s", pw ? pw->pw_name : uid_s);
+}
+
+/* --user: grime keeps root, and what it runs goes to the user's session.
+ * The session's sockets live under the user's runtime directory; whatever
+ * grime itself was started with wins, so a service can set them. */
+static int child_user(const char *name)
+{
+	struct passwd *pw = getpwnam(name);
+	if (!pw) {
+		LOG_ERR("--user: no user named %s", name);
+		return -1;
+	}
+	if (getuid() != 0) {
+		LOG_WARN("--user needs root; running commands as %s, who started grime", name);
+		return 0;
+	}
+	char rundir[64], bus[96];
+	snprintf(rundir, sizeof rundir, "/run/user/%u", (unsigned)pw->pw_uid);
+	snprintf(bus, sizeof bus, "unix:path=%s/bus", rundir);
+	/* who the user is is not grime's to override; the rest default */
+	const struct {
+		const char *name, *value;
+		bool fixed;
+	} vars[] = {
+		{"HOME", pw->pw_dir, true},
+		{"USER", pw->pw_name, true},
+		{"LOGNAME", pw->pw_name, true},
+		{"SHELL", pw->pw_shell, true},
+		{"PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", false},
+		{"XDG_RUNTIME_DIR", rundir, false},
+		{"DBUS_SESSION_BUS_ADDRESS", bus, false},
+		{"WAYLAND_DISPLAY", "wayland-0", false},
+		{"DISPLAY", ":0", false},
+		{"XAUTHORITY", NULL, false},
+		{"LANG", NULL, false},
+	};
+	size_t n = sizeof vars / sizeof *vars, k = 0;
+	char **env = calloc(n + 1, sizeof *env);
+	if (!env)
+		return -1;
+	for (size_t i = 0; i < n; i++) {
+		const char *v = vars[i].fixed ? NULL : getenv(vars[i].name);
+		if (!v)
+			v = vars[i].value;
+		if (!v)
+			continue;
+		size_t len = strlen(vars[i].name) + strlen(v) + 2;
+		if ((env[k] = malloc(len)))
+			snprintf(env[k++], len, "%s=%s", vars[i].name, v);
+	}
+	app.rt.child_uid = (int)pw->pw_uid;
+	app.rt.child_gid = (int)pw->pw_gid;
+	app.rt.child_env = env;
+	LOG_INFO("staying root; commands run as %s", pw->pw_name);
+	return 0;
 }
 
 static char *default_config_path(void)
@@ -274,6 +381,7 @@ int main(int argc, char **argv)
 	enum { OPT_CHECK = 256, OPT_LIST_KEYS, OPT_LIST_ACTIONS, OPT_EXPAND, OPT_LIST_DEVICES, OPT_WATCH };
 	static const struct option opts[] = {
 		{"config", required_argument, 0, 'c'},     {"timeout", required_argument, 0, 't'},
+		{"user", required_argument, 0, 'u'},
 		{"dry-run", no_argument, 0, 'n'},          {"verbose", no_argument, 0, 'v'},
 		{"help", no_argument, 0, 'h'},             {"check", no_argument, 0, OPT_CHECK},
 		{"list-keys", no_argument, 0, OPT_LIST_KEYS}, {"list-actions", no_argument, 0, OPT_LIST_ACTIONS},
@@ -284,10 +392,12 @@ int main(int argc, char **argv)
 	};
 	bool dry_run = false, check = false, expand = false, list_devices = false, watch = false;
 	int timeout_s = 0, c;
+	const char *user = NULL;
 	app.config_path = NULL;
-	while ((c = getopt_long(argc, argv, "c:t:nvh", opts, NULL)) != -1) {
+	while ((c = getopt_long(argc, argv, "c:t:u:nvh", opts, NULL)) != -1) {
 		switch (c) {
 		case 'c': app.config_path = optarg; break;
+		case 'u': user = optarg; break;
 		case 't': timeout_s = atoi(optarg); break;
 		case 'n': dry_run = true; break;
 		case 'v': grime_log_level = GRIME_LOG_DEBUG; break;
@@ -349,7 +459,11 @@ int main(int argc, char **argv)
 	if (!out)
 		return 1;
 	app.rt = (grime_runtime){.loop = app.loop, .out = out, .dry_run = dry_run,
-				 .quit = rt_quit, .reload = rt_reload};
+				 .quit = rt_quit, .reload = rt_reload,
+				 .capture = rt_capture, .uncapture = rt_uncapture, .feed = rt_feed,
+				 .down = app.down, .child_uid = -1, .child_gid = -1};
+	if (user && child_user(user) < 0)
+		return 1;
 	app.engine = grime_engine_new(&app.rt, cfg.keymap);
 	cfg.keymap = NULL;
 	memcpy(app.emergency, cfg.emergency, sizeof app.emergency);
@@ -374,7 +488,8 @@ int main(int argc, char **argv)
 	int out_fd = grime_output_event_fd(out);
 	if (out_fd >= 0)
 		grime_loop_add_fd(app.loop, out_fd, GRIME_IO_READ, on_output_readable, in);
-	drop_privileges();
+	if (!user)
+		drop_privileges();
 
 	grime_timer *deadline = NULL;
 	if (timeout_s > 0) {
