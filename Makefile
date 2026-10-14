@@ -1,6 +1,12 @@
 # Sources are globbed: adding a .c file under src/ needs no Makefile change.
 CC      ?= cc
 PKGS    := json-c libcurl
+# The kat action needs libkat; without it grime builds without that action.
+KAT     ?= $(shell pkg-config --exists kat && echo yes)
+ifeq ($(KAT),yes)
+PKGS    += kat
+LDLIBS  += -lpthread
+endif
 CFLAGS  ?= -O2 -g
 # user CFLAGS (e.g. make CFLAGS=-Werror) are added to, not replacing, what the build needs
 GRIME_CFLAGS := -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wno-unused-parameter -Wno-format-truncation -Iinclude $(shell pkg-config --cflags $(PKGS))
@@ -8,6 +14,9 @@ LDLIBS  += $(shell pkg-config --libs $(PKGS))
 
 BUILD   := build
 SRCS    := $(shell find src -name '*.c')
+ifneq ($(KAT),yes)
+SRCS    := $(filter-out src/actions/act_kat.c,$(SRCS))
+endif
 MAIN    := src/core/main.c
 OBJS    := $(SRCS:%.c=$(BUILD)/%.o)
 LIBOBJS := $(filter-out $(BUILD)/$(MAIN:.c=.o),$(OBJS))
