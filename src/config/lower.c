@@ -174,8 +174,8 @@ static json_object *chord_hold(struct chord *ch, bool down)
 
 /* ---- the slot vocabulary ---- */
 
-static const char *const SLOTS[] = {"hold",    "prefix",  "toggle", "press",
-				    "release", "tap",     "pass",   "do"};
+static const char *const SLOTS[] = {"hold", "prefix", "toggle", "mode", "press", "release",
+				    "tap",  "pass",   "leave",  "on",   "do"};
 
 static bool is_slot(const char *name)
 {
@@ -308,7 +308,10 @@ static int lower_entry(struct ctx *c, json_object *val, const char *path, json_o
 
 	static const struct {
 		const char *slot, *exit;
-	} LAYERS[] = {{"hold", "release"}, {"prefix", "action"}, {"toggle", "toggle"}};
+	} LAYERS[] = {{"hold", "release"},
+		      {"prefix", "action"},
+		      {"toggle", "toggle"},
+		      {"mode", "mode"}};
 	json_object *layer_v = NULL;
 	const char *exit = NULL, *layer_slot = NULL;
 	for (size_t i = 0; i < sizeof LAYERS / sizeof *LAYERS; i++) {
@@ -332,8 +335,8 @@ static int lower_entry(struct ctx *c, json_object *val, const char *path, json_o
 			(void)unused;
 			if (!is_slot(k))
 				return fail(c, path,
-					    "unknown \"%s\" (expected hold, prefix, toggle, "
-					    "press, release, tap, pass or do)",
+					    "unknown \"%s\" (expected hold, prefix, toggle, mode, "
+					    "press, release, tap, pass, leave, on or do)",
 					    k);
 		}
 	}
@@ -361,10 +364,30 @@ static int lower_entry(struct ctx *c, json_object *val, const char *path, json_o
 	}
 	json_object *pass_v = obj_get(val, "pass");
 	if (pass_v && json_object_get_boolean(pass_v)) {
-		if (!press)
+		if (!layer_v) {
+			json_object_put(press);
 			return fail(c, path,
-				    "\"pass\" needs a layer (\"hold\", \"prefix\" or \"toggle\")");
+				    "\"pass\" needs a layer (\"hold\", \"prefix\", \"toggle\" or \"mode\")");
+		}
 		json_object_object_add(press, "fallthrough", json_object_new_boolean(1));
+	}
+	json_object *on_v = obj_get(val, "on");
+	if (on_v && json_object_get_boolean(on_v)) {
+		if (!layer_slot || strcmp(layer_slot, "toggle")) {
+			json_object_put(press);
+			return fail(c, path, "\"on\" only works with \"toggle\"");
+		}
+		json_object_object_add(press, "on", json_object_new_boolean(1));
+	}
+	json_object *leave_v = obj_get(val, "leave");
+	if (leave_v && json_object_get_boolean(leave_v)) {
+		if (layer_v) {
+			json_object_put(press);
+			return fail(c, path, "\"leave\" ends a layer, so it can't start one");
+		}
+		if (!press)
+			press = json_object_new_object();
+		json_object_object_add(press, "leave", json_object_new_boolean(1));
 	}
 
 	json_object *tap_v = obj_get(val, "tap"), *rel_v = obj_get(val, "release");
@@ -418,10 +441,10 @@ static json_object *ensure_frame(struct ctx *c, json_object *dest, const char *n
 	json_object *press = json_object_new_object(), *then = json_object_new_object();
 	if (chord) {
 		/* the modifier still reaches the app, and keys we don't override
-		 * fall back out of the frame, so ctrl+s stays ctrl+s */
+		 * fall back out of the chord, so ctrl+s stays ctrl+s */
 		json_object_object_add(press, "do", json_object_new_string("press"));
 		json_object_object_add(press, "key", json_object_new_string(k));
-		json_object_object_add(press, "fallthrough", json_object_new_boolean(1));
+		json_object_object_add(press, "chord", json_object_new_boolean(1));
 		json_object_object_add(e, "release", key_action("release", k));
 	} else {
 		json_object_object_add(press, "exit", json_object_new_string("action"));

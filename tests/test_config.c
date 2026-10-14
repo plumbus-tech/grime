@@ -120,8 +120,9 @@ TEST(a_chord_binds_both_sides_of_the_modifier)
 {
 	static const char *cfg = "{" BASE "\"keymap\": {"
 				 "  \"ctrl+f\": {\"do\": \"tap\", \"key\": \"f1\"}}}";
-	CHECK(emits(cfg, "+leftctrl +f -f -leftctrl", "+leftctrl +f1 -f1 -leftctrl"));
-	CHECK(emits(cfg, "+rightctrl +f -f -rightctrl", "+rightctrl +f1 -f1 -rightctrl"));
+	/* the chord uses ctrl up: f1 goes out bare */
+	CHECK(emits(cfg, "+leftctrl +f -f -leftctrl", "+leftctrl -leftctrl +f1 -f1"));
+	CHECK(emits(cfg, "+rightctrl +f -f -rightctrl", "+rightctrl -rightctrl +f1 -f1"));
 	/* the modifier still reaches the app, and other chords are untouched */
 	CHECK(emits(cfg, "+leftctrl +s -s -leftctrl", "+leftctrl +s -s -leftctrl"));
 }

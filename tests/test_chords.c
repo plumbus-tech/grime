@@ -1,0 +1,192 @@
+/* Chords through layers, consumed modifiers, modes and "leave": the pieces an
+ * Emacs-style editing layer is made of. */
+#include <string.h>
+
+#include "grime/config.h"
+#include "grime/engine.h"
+#include "grime/keynames.h"
+#include "grime/log.h"
+#include "tinytest.h"
+
+static char rec[4096];
+
+static void rec_emit(grime_output *out, uint16_t code, int value)
+{
+	strcat(rec, rec[0] ? " " : "");
+	strcat(rec, value ? "+" : "-");
+	strcat(rec, grime_key_name(code));
+}
+
+static grime_output rec_out = {.emit = rec_emit};
+static grime_loop *loop;
+static grime_runtime rt;
+static void rt_quit(grime_runtime *r) {}
+static void rt_reload(grime_runtime *r) {}
+
+static grime_engine *load(const char *json)
+{
+	grime_config cfg;
+	char err[512];
+	if (grime_config_parse(json, &cfg, err, sizeof err) < 0) {
+		fprintf(stderr, "  config error: %s\n", err);
+		return NULL;
+	}
+	memset(&rt, 0, sizeof rt);
+	rt = (grime_runtime){.loop = loop, .out = &rec_out, .quit = rt_quit, .reload = rt_reload};
+	grime_engine *e = grime_engine_new(&rt, cfg.keymap);
+	cfg.keymap = NULL;
+	grime_config_free(&cfg);
+	rec[0] = 0;
+	return e;
+}
+
+static void feed(grime_engine *e, const char *events)
+{
+	char buf[512];
+	strcpy(buf, events);
+	for (char *tok = strtok(buf, " "); tok; tok = strtok(NULL, " ")) {
+		grime_key_event ev = {
+			.code = grime_key_from_name(tok + 1),
+			.edge = tok[0] == '+' ? GRIME_PRESS : GRIME_RELEASE,
+		};
+		grime_engine_feed(e, &ev);
+	}
+}
+
+static bool emits(const char *events, const char *want);
+
+static const char *emacs =
+	"{\"keymap\": {"
+	"  \"a\": \"a\", \"f\": \"f\", \"s\": \"s\", \"x\": \"x\", \"g\": \"g\", \"w\": \"w\","
+	"  \"comma\": \"comma\", \"space\": \"space\","
+	"  \"leftshift\": \"leftshift\", \"leftalt\": \"leftalt\","
+	"  \"capslock\": {\"do\": \"tap\", \"key\": \"f13\"},"
+	"  \"ctrl+capslock\": {\"toggle\": \"emacs\", \"pass\": true, \"on\": true}"
+	"},"
+	"\"layers\": {"
+	"  \"emacs\": {"
+	"    \"ctrl+a\": \"home\", \"ctrl+f\": \"right\", \"alt+shift+comma\": \"ctrl+home\","
+	"    \"ctrl+space\": {\"mode\": \"mark\"}"
+	"  },"
+	"  \"mark\": {"
+	"    \"ctrl+f\": \"shift+right\","
+	"    \"ctrl+w\": {\"do\": \"tap\", \"key\": \"x\", \"mods\": [\"leftctrl\"], \"leave\": true},"
+	"    \"ctrl+g\": {\"leave\": true}"
+	"  }"
+	"}}";
+
+static grime_engine *eng;
+
+static bool emits(const char *events, const char *want)
+{
+	grime_engine_free(eng);
+	eng = load(emacs);
+	feed(eng, events);
+	if (strcmp(rec, want)) {
+		fprintf(stderr, "  got [%s], wanted [%s]\n", rec, want);
+		return false;
+	}
+	return true;
+}
+
+TEST(a_consumed_modifier_is_lifted_for_the_key_it_made)
+{
+	CHECK(emits("+leftctrl +a -a -leftctrl", "+leftctrl -leftctrl +home -home"));
+	/* held across several: lifted once, and its release is not sent twice */
+	CHECK(emits("+leftctrl +a -a +f -f -leftctrl",
+		    "+leftctrl -leftctrl +home -home +right -right"));
+}
+
+TEST(a_lifted_modifier_comes_back_for_an_unbound_chord)
+{
+	CHECK(emits("+leftctrl +a -a +s -s -leftctrl",
+		    "+leftctrl -leftctrl +home -home +leftctrl +s -s -leftctrl"));
+}
+
+TEST(a_toggle_can_start_on_and_be_reached_from_inside_itself)
+{
+	/* ctrl+capslock is not in the emacs layer; ctrl falls through to the
+	 * root's own ctrl, which is where the toggle is */
+	CHECK(emits("+leftctrl +capslock -capslock +a -a -leftctrl", "+leftctrl +a -a -leftctrl"));
+	CHECK(emits("+leftctrl +capslock -capslock -leftctrl "
+		    "+leftctrl +capslock -capslock +a -a -leftctrl",
+		    "+leftctrl -leftctrl +leftctrl -leftctrl +home -home"));
+	/* capslock alone is the root's */
+	CHECK(emits("+capslock -capslock", "+f13 -f13"));
+}
+
+TEST(a_chord_follows_held_modifiers_in_any_order)
+{
+	CHECK(emits("+leftalt +leftshift +comma -comma -leftshift -leftalt",
+		    "+leftalt +leftshift -leftalt -leftshift +leftctrl +home -home -leftctrl"));
+	CHECK(emits("+leftshift +leftalt +comma -comma -leftalt -leftshift",
+		    "+leftshift +leftalt -leftalt -leftshift +leftctrl +home -home -leftctrl"));
+}
+
+TEST(a_mode_entered_with_ctrl_held_sees_that_ctrl)
+{
+	CHECK(emits("+leftctrl +space -space +f -f +f -f -leftctrl",
+		    "+leftctrl -leftctrl +leftshift +right -right -leftshift "
+		    "+leftshift +right -right -leftshift"));
+}
+
+TEST(a_key_the_mode_lacks_ends_it_and_goes_through)
+{
+	CHECK(emits("+leftctrl +space -space -leftctrl +x -x +leftctrl +f -f -leftctrl",
+		    "+leftctrl -leftctrl +x -x +leftctrl -leftctrl +right -right"));
+}
+
+TEST(a_modifier_alone_does_not_end_a_mode)
+{
+	CHECK(emits("+leftctrl +space -space -leftctrl +leftctrl +f -f -leftctrl",
+		    "+leftctrl -leftctrl +leftctrl -leftctrl +leftshift +right -right -leftshift"));
+}
+
+TEST(leave_ends_the_layer_it_is_in)
+{
+	CHECK(emits("+leftctrl +space -space +w -w +f -f -leftctrl",
+		    "+leftctrl -leftctrl +leftctrl +x -x -leftctrl +right -right"));
+	CHECK(emits("+leftctrl +space -space +g -g -leftctrl +leftctrl +f -f -leftctrl",
+		    "+leftctrl -leftctrl +leftctrl -leftctrl +right -right"));
+}
+
+static bool config_fails(const char *json, const char *needle)
+{
+	grime_config cfg;
+	char err[512] = "";
+	if (grime_config_parse(json, &cfg, err, sizeof err) == 0) {
+		grime_config_free(&cfg);
+		return false;
+	}
+	if (!strstr(err, needle))
+		fprintf(stderr, "  error was: %s\n", err);
+	return strstr(err, needle) != NULL;
+}
+
+TEST(new_slots_say_what_is_wrong)
+{
+	CHECK(config_fails("{\"keymap\": {\"a\": {\"hold\": {}, \"on\": true}}}",
+			   "\"on\" only works with \"toggle\""));
+	CHECK(config_fails("{\"keymap\": {\"a\": {\"mode\": {}, \"leave\": true}}}",
+			   "can't start one"));
+	CHECK(config_fails("{\"keymap\": {\"a\": {\"mode\": {}, \"toggle\": {}}}}",
+			   "can't both be on one key"));
+}
+
+int main(void)
+{
+	grime_log_level = GRIME_LOG_ERROR;
+	loop = grime_loop_new();
+	RUN(a_consumed_modifier_is_lifted_for_the_key_it_made);
+	RUN(a_lifted_modifier_comes_back_for_an_unbound_chord);
+	RUN(a_toggle_can_start_on_and_be_reached_from_inside_itself);
+	RUN(a_chord_follows_held_modifiers_in_any_order);
+	RUN(a_mode_entered_with_ctrl_held_sees_that_ctrl);
+	RUN(a_key_the_mode_lacks_ends_it_and_goes_through);
+	RUN(a_modifier_alone_does_not_end_a_mode);
+	RUN(leave_ends_the_layer_it_is_in);
+	RUN(new_slots_say_what_is_wrong);
+	grime_engine_free(eng);
+	grime_loop_free(loop);
+	return DONE();
+}

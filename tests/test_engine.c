@@ -162,11 +162,11 @@ TEST(toggle_overrides_chords_until_toggled_again)
 	grime_engine *e = load(override);
 	feed(e, "+leftctrl +f -f -leftctrl");         /* off: plain ctrl+f */
 	feed(e, "+f13 -f13");                         /* on */
-	feed(e, "+leftctrl +f -f +s -s -leftctrl");   /* ctrl+f overridden, ctrl+s passes */
+	feed(e, "+leftctrl +f -f +s -s -leftctrl");   /* ctrl+f overridden bare, ctrl+s passes */
 	feed(e, "+f -f");                             /* plain f falls through */
 	feed(e, "+f13 -f13 +leftctrl +f -f -leftctrl"); /* off again */
 	CHECK(!strcmp(rec, "+leftctrl +f -f -leftctrl "
-			   "+leftctrl +f1 -f1 +s -s -leftctrl "
+			   "+leftctrl -leftctrl +f1 -f1 +leftctrl +s -s -leftctrl "
 			   "+f -f "
 			   "+leftctrl +f -f -leftctrl"));
 	grime_engine_free(e);
