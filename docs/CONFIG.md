@@ -226,9 +226,9 @@ An **action** is `{"do": "...", ...}`, or a string: `"esc"` taps that key,
 4. Key repeat events are ignored; the OS autorepeats held output keys itself.
 5. There is no notion of time anywhere in the keymap.
 
-`grime --expand` prints the tree these rules actually run on. A named layer is
-copied wherever it is used, so a layer can't lead back to itself, and one used
-under many keys multiplies the tree.
+`grime --expand` prints the tree these rules actually run on. A named layer
+stays one layer however many keys use it, and may lead back to itself: there
+it is `"then": "<name>"`, spelled out once under `"layers"`.
 
 ## Several files
 
@@ -333,12 +333,13 @@ The toggle isn't inside the layer, but `pass` reaches it: with Ctrl held,
 
 - **C-SPC** starts a `mode` where motion selects: `ctrl+f` becomes Shift+Right,
   `alt+f` Ctrl+Shift+Right, and so on. `C-w` cuts and `M-w` copies the
-  selection and end the mode. `C-g` or C-SPC again drop the selection, at the
-  end the first motion went to (a bare Right or Left); any other key ends it and
-  goes through, so typing replaces the selection and an arrow moves as usual.
-  After `C-x h`, `C-g` leaves the cursor at the top.
-- The first motion picks `markf` or `markb` with `{"leave": true, "mode": …}`:
-  one mode for another.
+  selection and end the mode. `C-g` drops the selection, at the end the first
+  motion went to (a bare Right or Left), and C-SPC does the same and starts a
+  new one there. Arrows, Home/End and Page Up/Down extend it, as in Emacs; any
+  other key ends it and goes through, so typing replaces the selection. After
+  `C-x h`, `C-g` leaves the cursor at the top.
+- The first motion picks `markf` or `markb` with `{"leave": true, "mode": …}`,
+  one mode for another; C-SPC in those goes back to `mark`.
 - grime can't see which window has focus, so the layer is everywhere. Turn it
   off for a terminal or Emacs with `ctrl+capslock`.
 - C-k is Shift+End, then cut: at the end of a line there is nothing to select,

@@ -206,6 +206,14 @@ TEST(the_emacs_example_marks_and_searches)
 	CHECK(example_emits("+leftctrl +space -space +b -b +f -f +g -g -leftctrl",
 			    "+leftctrl -leftctrl +leftshift +left -left -leftshift "
 			    "+leftshift +right -right -leftshift +left -left"));
+	/* C-SPC again drops it and starts a new one where the cursor is */
+	CHECK(example_emits("+leftctrl +space -space +f -f +space -space +b -b +g -g -leftctrl",
+			    "+leftctrl -leftctrl +leftshift +right -right -leftshift +right -right "
+			    "+leftshift +left -left -leftshift +left -left"));
+	/* an arrow extends it too */
+	CHECK(example_emits("+leftctrl +space -space -leftctrl +right -right +leftctrl +g -g -leftctrl",
+			    "+leftctrl -leftctrl +leftshift +right -right -leftshift +leftctrl -leftctrl "
+			    "+right -right"));
 	/* nothing selected yet: C-g just ends it */
 	CHECK(example_emits("+leftctrl +space -space +g -g -leftctrl", "+leftctrl -leftctrl"));
 	/* C-x h selects all; C-g leaves the cursor at the top */

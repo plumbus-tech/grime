@@ -75,7 +75,8 @@
         "ctrl+c": "ctrl+q"
       } },
 
-      "ctrl+space": { "mode": "mark" }
+      "ctrl+space": { "mode": "mark" },
+      "ctrl+shift+2": { "mode": "mark" }
     },
 
     "isearch": {
@@ -93,7 +94,14 @@
       "ctrl+v": { "press": "shift+pagedown", "leave": true, "mode": "markf" },
       "alt+f": { "press": "ctrl+shift+right", "leave": true, "mode": "markf" },
       "alt+e": { "press": "ctrl+shift+down", "leave": true, "mode": "markf" },
+      "alt+shift+rightbrace": { "press": "ctrl+shift+down", "leave": true, "mode": "markf" },
       "alt+shift+dot": { "press": "ctrl+shift+end", "leave": true, "mode": "markf" },
+      "right": { "press": "shift+right", "leave": true, "mode": "markf" },
+      "down": { "press": "shift+down", "leave": true, "mode": "markf" },
+      "end": { "press": "shift+end", "leave": true, "mode": "markf" },
+      "pagedown": { "press": "shift+pagedown", "leave": true, "mode": "markf" },
+      "ctrl+right": { "press": "ctrl+shift+right", "leave": true, "mode": "markf" },
+      "ctrl+end": { "press": "ctrl+shift+end", "leave": true, "mode": "markf" },
 
       "ctrl+b": { "press": "shift+left", "leave": true, "mode": "markb" },
       "ctrl+a": { "press": "shift+home", "leave": true, "mode": "markb" },
@@ -101,13 +109,21 @@
       "alt+v": { "press": "shift+pageup", "leave": true, "mode": "markb" },
       "alt+b": { "press": "ctrl+shift+left", "leave": true, "mode": "markb" },
       "alt+a": { "press": "ctrl+shift+up", "leave": true, "mode": "markb" },
+      "alt+shift+leftbrace": { "press": "ctrl+shift+up", "leave": true, "mode": "markb" },
       "alt+shift+comma": { "press": "ctrl+shift+home", "leave": true, "mode": "markb" },
       "alt+m": { "press": "shift+home", "leave": true, "mode": "markb" },
+      "left": { "press": "shift+left", "leave": true, "mode": "markb" },
+      "up": { "press": "shift+up", "leave": true, "mode": "markb" },
+      "home": { "press": "shift+home", "leave": true, "mode": "markb" },
+      "pageup": { "press": "shift+pageup", "leave": true, "mode": "markb" },
+      "ctrl+left": { "press": "ctrl+shift+left", "leave": true, "mode": "markb" },
+      "ctrl+home": { "press": "ctrl+shift+home", "leave": true, "mode": "markb" },
 
       "ctrl+w": { "press": "ctrl+x", "leave": true },
       "alt+w": { "press": "ctrl+c", "leave": true },
       "ctrl+g": { "leave": true },
-      "ctrl+space": { "leave": true }
+      "ctrl+space": { "leave": true },
+      "ctrl+shift+2": { "leave": true }
     },
 
     "markf": {
@@ -117,20 +133,35 @@
       "ctrl+v": "shift+pagedown",
       "alt+f": "ctrl+shift+right",
       "alt+e": "ctrl+shift+down",
+      "alt+shift+rightbrace": "ctrl+shift+down",
       "alt+shift+dot": "ctrl+shift+end",
+      "right": "shift+right",
+      "down": "shift+down",
+      "end": "shift+end",
+      "pagedown": "shift+pagedown",
+      "ctrl+right": "ctrl+shift+right",
+      "ctrl+end": "ctrl+shift+end",
       "ctrl+b": "shift+left",
       "ctrl+a": "shift+home",
       "ctrl+p": "shift+up",
       "alt+v": "shift+pageup",
       "alt+b": "ctrl+shift+left",
       "alt+a": "ctrl+shift+up",
+      "alt+shift+leftbrace": "ctrl+shift+up",
       "alt+shift+comma": "ctrl+shift+home",
       "alt+m": "shift+home",
+      "left": "shift+left",
+      "up": "shift+up",
+      "home": "shift+home",
+      "pageup": "shift+pageup",
+      "ctrl+left": "ctrl+shift+left",
+      "ctrl+home": "ctrl+shift+home",
 
       "ctrl+w": { "press": "ctrl+x", "leave": true },
       "alt+w": { "press": "ctrl+c", "leave": true },
       "ctrl+g": { "press": "right", "leave": true },
-      "ctrl+space": { "press": "right", "leave": true }
+      "ctrl+space": { "press": "right", "leave": true, "mode": "mark" },
+      "ctrl+shift+2": { "press": "right", "leave": true, "mode": "mark" }
     },
 
     "markb": {
@@ -140,20 +171,35 @@
       "ctrl+v": "shift+pagedown",
       "alt+f": "ctrl+shift+right",
       "alt+e": "ctrl+shift+down",
+      "alt+shift+rightbrace": "ctrl+shift+down",
       "alt+shift+dot": "ctrl+shift+end",
+      "right": "shift+right",
+      "down": "shift+down",
+      "end": "shift+end",
+      "pagedown": "shift+pagedown",
+      "ctrl+right": "ctrl+shift+right",
+      "ctrl+end": "ctrl+shift+end",
       "ctrl+b": "shift+left",
       "ctrl+a": "shift+home",
       "ctrl+p": "shift+up",
       "alt+v": "shift+pageup",
       "alt+b": "ctrl+shift+left",
       "alt+a": "ctrl+shift+up",
+      "alt+shift+leftbrace": "ctrl+shift+up",
       "alt+shift+comma": "ctrl+shift+home",
       "alt+m": "shift+home",
+      "left": "shift+left",
+      "up": "shift+up",
+      "home": "shift+home",
+      "pageup": "shift+pageup",
+      "ctrl+left": "ctrl+shift+left",
+      "ctrl+home": "ctrl+shift+home",
 
       "ctrl+w": { "press": "ctrl+x", "leave": true },
       "alt+w": { "press": "ctrl+c", "leave": true },
       "ctrl+g": { "press": "left", "leave": true },
-      "ctrl+space": { "press": "left", "leave": true }
+      "ctrl+space": { "press": "left", "leave": true, "mode": "mark" },
+      "ctrl+shift+2": { "press": "left", "leave": true, "mode": "mark" }
     }
   }
 }
