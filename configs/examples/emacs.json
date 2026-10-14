@@ -1,0 +1,12 @@
+{
+  "devices": ["auto"],
+  "include": ["../layouts/qwerty.json", "../layers/emacs.json"],
+  "base": "qwerty",
+
+  "keymap": {
+    "ctrl+capslock": { "toggle": "emacs", "pass": true, "on": true,
+                       "do": "exec", "argv": ["notify-send", "grime", "Emacs keys toggled"] },
+    "alt+j": "pagedown",
+    "alt+k": "pageup"
+  }
+}

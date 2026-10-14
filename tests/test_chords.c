@@ -150,6 +150,54 @@ TEST(leave_ends_the_layer_it_is_in)
 		    "+leftctrl -leftctrl +leftctrl -leftctrl +right -right"));
 }
 
+/* The shipped Emacs layer, end to end. */
+static bool example_emits(const char *events, const char *want)
+{
+	grime_config cfg;
+	char err[512];
+	if (grime_config_load("configs/examples/emacs.json", &cfg, err, sizeof err) < 0) {
+		fprintf(stderr, "  config error: %s\n", err);
+		return false;
+	}
+	memset(&rt, 0, sizeof rt);
+	rt = (grime_runtime){.loop = loop, .out = &rec_out, .quit = rt_quit, .reload = rt_reload,
+			     .dry_run = true};
+	grime_engine *e = grime_engine_new(&rt, cfg.keymap);
+	cfg.keymap = NULL;
+	grime_config_free(&cfg);
+	rec[0] = 0;
+	feed(e, events);
+	grime_engine_free(e);
+	if (strcmp(rec, want)) {
+		fprintf(stderr, "  got [%s], wanted [%s]\n", rec, want);
+		return false;
+	}
+	return true;
+}
+
+TEST(the_emacs_example_edits_text)
+{
+	CHECK(example_emits("+h -h +i -i", "+h -h +i -i"));
+	CHECK(example_emits("+leftctrl +e -e -leftctrl", "+leftctrl -leftctrl +end -end"));
+	CHECK(example_emits("+leftalt +f -f -leftalt",
+			    "+leftalt -leftalt +leftctrl +right -right -leftctrl"));
+	CHECK(example_emits("+leftctrl +k -k -leftctrl",
+			    "+leftctrl -leftctrl +leftshift +end -end -leftshift "
+			    "+leftctrl +x -x -leftctrl"));
+	/* mark, two words, cut */
+	CHECK(example_emits("+leftctrl +space -space -leftctrl +leftalt +f -f +f -f -leftalt "
+			    "+leftctrl +w -w -leftctrl",
+			    "+leftctrl -leftctrl +leftalt -leftalt +leftctrl +leftshift +right "
+			    "-right -leftshift -leftctrl +leftctrl +leftshift +right -right "
+			    "-leftshift -leftctrl +leftctrl -leftctrl +leftctrl +x -x -leftctrl"));
+	/* off: ctrl+a is the app's again; alt+j still pages */
+	CHECK(example_emits("+leftctrl +capslock -capslock +a -a -leftctrl +leftalt +j -j -leftalt",
+			    "+leftctrl +a -a -leftctrl +leftalt -leftalt +pagedown -pagedown"));
+	/* M-< : alt and shift are both used up */
+	CHECK(example_emits("+leftalt +leftshift +comma -comma -leftshift -leftalt",
+			    "+leftalt +leftshift -leftalt -leftshift +leftctrl +home -home -leftctrl"));
+}
+
 static bool config_fails(const char *json, const char *needle)
 {
 	grime_config cfg;
@@ -186,6 +234,7 @@ int main(void)
 	RUN(a_modifier_alone_does_not_end_a_mode);
 	RUN(leave_ends_the_layer_it_is_in);
 	RUN(new_slots_say_what_is_wrong);
+	RUN(the_emacs_example_edits_text);
 	grime_engine_free(eng);
 	grime_loop_free(loop);
 	return DONE();

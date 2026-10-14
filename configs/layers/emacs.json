@@ -1,0 +1,66 @@
+{
+  "layers": {
+    "emacs": {
+      "ctrl+a": "home",
+      "ctrl+e": "end",
+      "ctrl+f": "right",
+      "ctrl+b": "left",
+      "ctrl+n": "down",
+      "ctrl+p": "up",
+      "ctrl+v": "pagedown",
+      "alt+v": "pageup",
+      "alt+f": "ctrl+right",
+      "alt+b": "ctrl+left",
+      "alt+shift+comma": "ctrl+home",
+      "alt+shift+dot": "ctrl+end",
+
+      "ctrl+d": "delete",
+      "ctrl+h": "backspace",
+      "alt+d": "ctrl+delete",
+      "alt+backspace": "ctrl+backspace",
+      "ctrl+k": { "do": "seq", "actions": [
+        { "do": "tap", "key": "end", "mods": ["leftshift"] },
+        { "do": "tap", "key": "x", "mods": ["leftctrl"] } ] },
+      "ctrl+o": { "do": "seq", "actions": [
+        { "do": "tap", "key": "enter" },
+        { "do": "tap", "key": "left" } ] },
+
+      "ctrl+w": "ctrl+x",
+      "alt+w": "ctrl+c",
+      "ctrl+y": "ctrl+v",
+      "ctrl+slash": "ctrl+z",
+      "ctrl+shift+minus": "ctrl+z",
+      "ctrl+g": "esc",
+
+      "ctrl+space": { "mode": "mark" }
+    },
+
+    "mark": {
+      "ctrl+a": "shift+home",
+      "ctrl+e": "shift+end",
+      "ctrl+f": "shift+right",
+      "ctrl+b": "shift+left",
+      "ctrl+n": "shift+down",
+      "ctrl+p": "shift+up",
+      "ctrl+v": "shift+pagedown",
+      "alt+v": "shift+pageup",
+      "alt+f": "ctrl+shift+right",
+      "alt+b": "ctrl+shift+left",
+      "alt+shift+comma": "ctrl+shift+home",
+      "alt+shift+dot": "ctrl+shift+end",
+      "left": "shift+left",
+      "right": "shift+right",
+      "up": "shift+up",
+      "down": "shift+down",
+      "home": "shift+home",
+      "end": "shift+end",
+      "pageup": "shift+pageup",
+      "pagedown": "shift+pagedown",
+
+      "ctrl+w": { "do": "tap", "key": "x", "mods": ["leftctrl"], "leave": true },
+      "alt+w": { "do": "tap", "key": "c", "mods": ["leftctrl"], "leave": true },
+      "ctrl+g": { "leave": true },
+      "ctrl+space": { "leave": true }
+    }
+  }
+}
